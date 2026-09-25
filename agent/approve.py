@@ -21,6 +21,17 @@ def pending(h: httpx.Client, session_id: str) -> tuple[dict, list[dict]]:
     return turn, actions
 
 
+def _all_events(h: httpx.Client, session_id: str, turn_id: str) -> list[dict]:
+    events, token = [], None
+    while True:
+        page = h.get(f"/sessions/{session_id}/turns/{turn_id}/events",
+                     params={"page_token": token} if token else {}).raise_for_status().json()
+        events += page.get("data", [])
+        token = (page.get("pagination") or {}).get("next_page_token")
+        if not token:
+            return events
+
+
 def main() -> None:
     if len(sys.argv) < 2:
         raise SystemExit(__doc__)
@@ -31,7 +42,7 @@ def main() -> None:
         if not actions:
             raise SystemExit(f"nothing is waiting for approval in {session_id} (latest turn is {turn['state']['status']})")
         calls = [(a["thread_id"], c["id"]) for a in actions for c in a["tool_calls"]]
-        events = h.get(f"/sessions/{session_id}/turns/{turn['id']}/events", params={"limit": 500}).json()["data"]
+        events = _all_events(h, session_id, turn["id"])
         by_id = {c["id"]: c for e in events if e["type"] == "model.message" for c in e.get("tool_calls") or []}
         for _, call_id in calls:
             fn = by_id.get(call_id, {}).get("function", {})
