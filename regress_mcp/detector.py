@@ -122,7 +122,9 @@ order by signal
 def _segment_clause(exclude: dict | None, only: dict | None) -> tuple[str, dict]:
     """SQL for `exclude` (drop one segment, for localisation) and `only` (keep one, for verification).
 
-    `only` applies to the current window alone, so the baseline stays the full pre-incident history.
+    Both apply to the current window alone: the baseline stays the full history of normal traffic.
+    Filtering the baseline too would compare a segment with itself (excluding the healthy version would
+    leave a baseline made of the broken version's past, and the broken traffic would look normal).
     """
     clauses, params = [], {}
     for key, seg in (("exclude", exclude), ("only", only)):
@@ -131,10 +133,8 @@ def _segment_clause(exclude: dict | None, only: dict | None) -> tuple[str, dict]
         if seg["dimension"] not in DIMENSIONS:
             raise ValueError(f"{key} dimension must be one of {sorted(DIMENSIONS)}")
         params[f"{key}_value"] = str(seg["value"])
-        if key == "exclude":
-            clauses.append(f"and r.{seg['dimension']}::text is distinct from %(exclude_value)s")
-        else:
-            clauses.append(f"and (r.ts < p.as_of - p.w or r.{seg['dimension']}::text = %(only_value)s)")
+        op = "is distinct from" if key == "exclude" else "="
+        clauses.append(f"and (r.ts < p.as_of - p.w or r.{seg['dimension']}::text {op} %({key}_value)s)")
     return " ".join(clauses), params
 
 

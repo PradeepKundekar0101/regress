@@ -65,6 +65,12 @@ def _brief(evidence: list) -> list[dict]:
     return [{"id": e["id"], "label": e["label"], "value": narrative.fmt(e)} for e in items]
 
 
+def _active_incident() -> str | None:
+    """Evidence from read tools belongs to the open incident, so the narrator may cite it."""
+    open_now = store.open_incidents()
+    return open_now[0]["id"] if open_now else None
+
+
 def _live() -> dict:
     with _db() as conn:
         model = sources.route(conn)["model"]
@@ -79,7 +85,7 @@ def get_window_stats(minutes: int = 15, group_by: str | None = None) -> dict:
     """Signals over the last `minutes`, optionally grouped by prompt_version, model, category or source."""
     with _db() as conn:
         result = sources.window_stats(conn, _now() - timedelta(minutes=minutes), _now(), group_by)
-    store.add_evidence(None, result["evidence"])
+    store.add_evidence(_active_incident(), result["evidence"])
     return {k: v for k, v in result.items() if k != "evidence"}
 
 
@@ -88,7 +94,7 @@ def get_changes(minutes: int = 60) -> dict:
     """Prompt label moves and route changes in the last `minutes`, with their commits in the config repo."""
     with _db() as conn:
         result = sources.changes(conn, _now() - timedelta(minutes=minutes), _now())
-    store.add_evidence(None, result["evidence"])
+    store.add_evidence(_active_incident(), result["evidence"])
     return {k: v for k, v in result.items() if k != "evidence"}
 
 
@@ -105,7 +111,7 @@ def get_traces(minutes: int = 30, prompt_version: int | None = None, model: str 
 def get_user_signals(minutes: int = 15) -> dict:
     """Thumbs-down and talk-to-human events from PostHog: the customer impact."""
     result = sources.user_signals(minutes)
-    store.add_evidence(None, result.get("evidence", []))
+    store.add_evidence(_active_incident(), result.get("evidence", []))
     return {k: v for k, v in result.items() if k != "evidence"}
 
 
@@ -187,10 +193,11 @@ def localize(incident_id: str) -> dict:
 def replay_generate(incident_id: str, baseline_prompt_version: int, baseline_model: str,
                     suspect_prompt_version: int, suspect_model: str, trace_ids: list[str] | None = None,
                     limit: int = 20) -> dict:
-    """Re-run real inputs under a baseline arm and a suspect arm. Returns raw outputs for your sandbox code to score.
+    """Re-run real inputs under a baseline arm and a suspect arm, through the production model call.
 
-    Each output has trace_id, golden_id, arm ('baseline' or 'suspect'), raw (the model's text), latency_ms,
-    cost_usd, error and expected {escalate, refusal, citations, must_contain}.
+    Call this directly (not from sandbox code: slow models can outlast the sandbox exec timeout). It returns a
+    replay_id and a summary; your sandbox script then fetches the raw outputs with get_replay_outputs,
+    scores them and calls submit_replay_report.
     """
     incident = store.incident(incident_id)
     if incident["status"] not in ("planned", "replayed"):
@@ -205,7 +212,18 @@ def replay_generate(incident_id: str, baseline_prompt_version: int, baseline_mod
     inputs = [{"trace_id": t, "golden_id": g, "question": q} for t, g, q in rows][:limit]
     arms = [{"name": "baseline", "prompt_version": baseline_prompt_version, "model": baseline_model},
             {"name": "suspect", "prompt_version": suspect_prompt_version, "model": suspect_model}]
-    return replay.generate(store, incident_id, arms, inputs)
+    result = replay.generate(store, incident_id, arms, inputs)
+    return {k: v for k, v in result.items() if k != "outputs"}
+
+
+@tool(READ)
+def get_replay_outputs(replay_id: str) -> dict:
+    """Raw replay outputs to score in the sandbox. Each output: trace_id, golden_id, arm ('baseline' or
+    'suspect'), raw (the model's text), latency_ms, cost_usd, error, expected {escalate, refusal, citations,
+    must_contain}."""
+    row = store.replay(replay_id)
+    return {"replay_id": replay_id, "incident_id": row["incident_id"], "arms": row["spec"]["arms"],
+            "outputs": row["outputs"]}
 
 
 @tool(ANALYSE)

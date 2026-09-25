@@ -16,7 +16,7 @@ from target import config
 from target.bot import llm
 from target.bot.scoring import score
 
-CONCURRENCY = 8
+CONCURRENCY = 16
 TOLERANCE_ABS = 0.005     # eval, rates
 TOLERANCE_REL = 0.01      # latency
 
@@ -111,7 +111,7 @@ def verify_report(store: Store, replay_id: str, report: dict, baseline_arm: str,
                     ev = Evidence(f"replay {arm_name} {key} (n={st['n']})", st[key], unit, source,
                                   "sandbox replay harness, re-verified by regress-mcp/replay")
                     evidence.append(ev)
-                    gap.setdefault(arm_name, {})[key] = ev.id
+                    gap[f"{arm_name} {key}"] = ev.id
         eval_gap = base["eval_score_mean"] - sus["eval_score_mean"]
         latency_ratio = sus["latency_p50_ms"] / base["latency_p50_ms"] if base["latency_p50_ms"] else None
         cost_ratio = (sus["cost_per_request_usd"] / base["cost_per_request_usd"]

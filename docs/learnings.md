@@ -20,6 +20,10 @@ Things that cost time today and must not cost time tomorrow.
 - MCP Python SDK 2.x renamed FastMCP to `MCPServer` (`from mcp.server.mcpserver import MCPServer`); Python attributes are snake_case (`destructive_hint`) but the wire format stays camelCase.
 - MCP 2.x hides the text of unexpected exceptions; raise `ToolError` for refusals the agent must read.
 - Code mode is on whenever the sandbox is enabled: sandbox Python calls `await call_tool(server, tool, body={...})`, only printed output reaches the context, and approval gates still apply.
+- Code mode works on Daytona: the sandbox has Python 3.13, `from mcp_client import call_tool`, and an `mcp-client call-tool <server> <tool> '<json>'` CLI. Tools without an output schema make the agent probe response shapes first.
+- The Daytona sandbox exec timeout is 60 s: long model calls (a gpt-5 replay) must be direct tool calls, not code inside a sandbox script.
+- Skills must come from a github.com or gitlab.com repo pinned to a ref, the skill manifest needs a `description`, and git skills cannot be `preload`ed; they mount at `/opt/tf/skills/<name>`. Put the hard rules in the agent instructions too.
+- `require_approval_for_tools` defaults to `["@destructive"]`; set it explicitly per connector anyway.
 
 ## Bot and telemetry
 
