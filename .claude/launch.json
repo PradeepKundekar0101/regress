@@ -6,6 +6,12 @@
       "runtimeExecutable": "uv",
       "runtimeArgs": ["run", "uvicorn", "target.bot.app:app", "--port", "8000"],
       "port": 8000
+    },
+    {
+      "name": "regress-console",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "uvicorn", "console.app:app", "--port", "8100"],
+      "port": 8100
     }
   ]
 }

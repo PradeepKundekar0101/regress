@@ -39,7 +39,8 @@ def _shares(conn: psycopg.Connection, dim: str, as_of: datetime, window_minutes:
     return {value: share for value, share in rows}
 
 
-def localize(conn: psycopg.Connection, *, as_of: datetime, window_minutes: int, alarms: list[str]) -> dict:
+def localize(conn: psycopg.Connection, *, as_of: datetime, window_minutes: int, alarms: list[str],
+             mask: list[tuple[datetime, datetime]] | None = None) -> dict:
     """For each change segment present in the window, which of `alarms` vanish without it.
 
     When one segment is essentially the whole window (a regression that has been live longer than the
@@ -51,7 +52,7 @@ def localize(conn: psycopg.Connection, *, as_of: datetime, window_minutes: int, 
         shares = _shares(conn, dim, as_of, window_minutes)
         for value in values:
             run = detect(conn, as_of=as_of, window_minutes=window_minutes,
-                         exclude={"dimension": dim, "value": value})
+                         exclude={"dimension": dim, "value": value}, mask=mask)
             evidence += run["evidence"]
             rows = {s["signal"]: s for s in run["signals"]}
             # An alarm only counts as explained if the rest of the traffic still has the volume to judge.

@@ -50,14 +50,14 @@ def switch_prompt(action: str) -> None:
         return
     langfuse.update_prompt(name=name, version=target_version, new_labels=["production"])
     sha = config_repo.record_prompt(name, target_version, f"{PROMPT_MESSAGES[action]} ({name} v{target_version})")
-    with psycopg.connect(config.env("DATABASE_URL")) as conn:
+    with config.db_connect() as conn:
         log_change(conn, "prompt", f"{name}:production", f"v{current}", f"v{target_version}", f"prompt {action}", sha)
     print(f"prompt: production v{current} -> v{target_version} ({variant})" + (f"  commit {sha[:7]}" if sha else ""))
 
 
 def switch_route(action: str) -> None:
     to_model = config.env("LARGE_MODEL", LARGE_MODEL_DEFAULT) if action == "break" else config.default_model()
-    with psycopg.connect(config.env("DATABASE_URL")) as conn:
+    with config.db_connect() as conn:
         current = conn.execute("select model from routes where name = %s", (config.ROUTE_NAME,)).fetchone()[0]
         if current == to_model:
             print(f"route: {config.ROUTE_NAME} already on {to_model}")
@@ -74,7 +74,7 @@ def switch_route(action: str) -> None:
 def status() -> None:
     langfuse = get_client()
     name = config.prompt_name()
-    with psycopg.connect(config.env("DATABASE_URL")) as conn:
+    with config.db_connect() as conn:
         model = conn.execute("select model from routes where name = %s", (config.ROUTE_NAME,)).fetchone()[0]
     print(f"prompt {name}: production=v{production_version(langfuse, name)} "
           f"baseline=v{find_version(langfuse, name, 'baseline')} regressed=v{find_version(langfuse, name, 'regressed')}")

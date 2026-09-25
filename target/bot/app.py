@@ -17,7 +17,6 @@ from fastapi.staticfiles import StaticFiles
 from langfuse import get_client, propagate_attributes
 from openai import OpenAIError
 from posthog import Posthog
-from psycopg_pool import ConnectionPool
 from pydantic import BaseModel, Field
 
 from target import config
@@ -36,7 +35,7 @@ state: dict = {}
 async def lifespan(_: FastAPI):
     state["langfuse"] = get_client()
     state["openai"] = llm.make_client()
-    state["db"] = ConnectionPool(config.env("DATABASE_URL"), min_size=1, max_size=10, open=True)
+    state["db"] = config.db_pool(max_size=4)
     state["posthog"] = Posthog(
         config.posthog_project_key(), host=config.env("POSTHOG_HOST"),
         on_error=lambda err, batch: log.error("posthog dropped %d events: %s", len(batch), err),

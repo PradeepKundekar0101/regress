@@ -43,6 +43,21 @@ def env(name: str, default: str | None = None) -> str:
     return value
 
 
+# Supabase's transaction pooler (port 6543) multiplexes many short-lived clients; it cannot keep
+# server-side prepared statements, so psycopg must not create them.
+DB_KWARGS = {"prepare_threshold": None}
+
+
+def db_connect():
+    import psycopg
+    return psycopg.connect(env("DATABASE_URL"), **DB_KWARGS)
+
+
+def db_pool(max_size: int):
+    from psycopg_pool import ConnectionPool
+    return ConnectionPool(env("DATABASE_URL"), min_size=1, max_size=max_size, kwargs=DB_KWARGS, open=True)
+
+
 def optional_env(name: str) -> str | None:
     return os.environ.get(name) or None
 

@@ -36,6 +36,10 @@ def _undone(change: dict, changes: list[dict]) -> bool:
     return reverted_later or is_revert
 
 
+def _names(items) -> str:
+    return ", ".join(items) or "none"
+
+
 def is_live(candidate: dict, live: dict) -> bool:
     if candidate["dimension"] == "prompt_version":
         return int(candidate["value"]) == live["prompt_version"]
@@ -90,8 +94,9 @@ def evaluate(*, candidate: dict, localization: dict, onset: str | None, changes:
                 explained_elsewhere[alarm] = f"{other['dimension']}={other['value']} (no longer live)"
         unexplained = [a for a in leftover if a not in explained_elsewhere]
         gates.append({"gate": 3, "name": "excluding the segment removes the alarms", "passed": not unexplained,
-                      "detail": f"explains {mine['explains']}; explained by other segments {explained_elsewhere}; "
-                                f"unexplained {unexplained}",
+                      "detail": f"explains {_names(mine['explains'])} ({mine.get('method', 'exclusion')})"
+                                + (f"; {_names(f'{a} by {why}' for a, why in explained_elsewhere.items())}" if explained_elsewhere else "")
+                                + (f"; unexplained {_names(unexplained)}" if unexplained else ""),
                       "evidence": [v["evidence"] for v in mine["z_after_exclusion"].values()]})
 
     # Gate 4: no competing, unresolved change in the window.

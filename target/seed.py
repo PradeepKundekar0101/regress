@@ -13,7 +13,7 @@ SCHEMA = config.ROOT / "sql" / "001_schema.sql"
 
 
 def seed_db() -> None:
-    with psycopg.connect(config.env("DATABASE_URL")) as conn:
+    with config.db_connect() as conn:
         conn.execute(SCHEMA.read_text())
         for item in config.golden_items().values():
             conn.execute(
@@ -56,7 +56,7 @@ def seed_config_repo() -> None:
         return
     name = config.prompt_name()
     version = production_version(get_client(), name)
-    with psycopg.connect(config.env("DATABASE_URL")) as conn:
+    with config.db_connect() as conn:
         model = conn.execute("select model from routes where name = %s", (config.ROUTE_NAME,)).fetchone()[0]
     shas = [
         config_repo.record_prompt(name, version, f"Record current production prompt ({name} v{version})"),

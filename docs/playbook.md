@@ -14,7 +14,7 @@ Read `docs/learnings.md` once before starting.
 - [ ] Langfuse connector registered through the API, not the form (the form turns `Basic` into `Bearer Basic`):
       `PUT /api/v1/settings/mcp-servers` with `Authorization: Basic base64(pk:sk)`.
 - [ ] GitHub connector added in TrueForge (catalog, fine-grained PAT with Issues read/write on the config repo).
-- [ ] `.env` filled, no quotes around values. PostHog: project key `phc_` for capture, personal key `phx_` plus project id for reads.
+- [ ] `.env` filled, no quotes around values. `DATABASE_URL` uses the Supabase transaction pooler (port 6543). PostHog: project key `phc_` for capture, personal key `phx_` plus project id for reads.
 - [ ] Gateway credentials (10:30): set `OPENAI_BASE_URL` and the key in `.env` if using the TrueFoundry AI Gateway.
 
 ## 12:00 to 13:30: target system (rehearsal took about 3 hours; now about 90 minutes)
@@ -27,6 +27,7 @@ Read `docs/learnings.md` once before starting.
 5. Seed script (schema, golden, route, two prompt versions with `config.variant`), fault switches committing to the config repo, traffic with `--burst`.
 6. Check: burst 40 on v1 scores about 0.99; trip the prompt fault, burst, see about 0.5; revert.
    Start background traffic now so the detector has 2 hours of baseline by the demo.
+   Do not trip faults in the 2 hours before the demo except rehearsed ones that open incidents (their periods are masked); the detector needs 30 minutes of clean history.
 
 ## 13:30 to 15:30: regress-mcp
 
@@ -50,7 +51,9 @@ Read `docs/learnings.md` once before starting.
 
 Show the approval card, the gates, the refused tampered replay report and the refused invented number.
 
-## 16:30 to 18:00: second fault, polish, README
+## 16:30 to 18:00: second fault, console, polish, README
+
+- Incident console (`console/`): approvals through the TrueForge API with the three guards; about 45 minutes with the design already settled.
 
 - Route fault to gpt-5 (quality flat, cost and p95 alarm): LOCALIZED_ROUTE, deny it on stage.
 - README: pitch, architecture, safety policy (reads free, one gated write, deletes never, failed gate cannot reach approval), how to run, AI-assistance disclosure, prior art (ONCALL, RootCauseOS).

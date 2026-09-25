@@ -73,7 +73,7 @@ def rollback_prompt(store: Store, incident_id: str, prompt: str, label: str,
 
     langfuse.update_prompt(name=prompt, version=to_version, new_labels=[label])
     sha = config_repo.record_prompt(prompt, to_version, f"Regress rollback ({incident_id}): {prompt} v{from_version} -> v{to_version}")
-    with psycopg.connect(config.env("DATABASE_URL")) as conn:
+    with config.db_connect() as conn:
         _log_change(conn, incident_id, "prompt", f"{prompt}:{label}", f"v{from_version}", f"v{to_version}", sha)
     applied_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     store.transition(incident_id, "applied", f"{label} label moved v{from_version} -> v{to_version}", [live_ev.id],
@@ -92,7 +92,7 @@ def revert_route(store: Store, incident_id: str, route: str, from_model: str, to
     if incident["status"] == "checkpointed":
         store.transition(incident_id, "approved", "approved by a human in TrueForge", [])
 
-    with psycopg.connect(config.env("DATABASE_URL")) as conn:
+    with config.db_connect() as conn:
         live = conn.execute("select model from routes where name = %s for update", (route,)).fetchone()[0]
         live_ev = Evidence(f"live model on route {route} before apply", None, "model",
                            {"kind": "sql", "query": "select model from routes where name = %s", "value": live},
@@ -126,7 +126,7 @@ def verify_recovery(store: Store, incident_id: str, conn: psycopg.Connection, mi
     now = datetime.now(timezone.utc)
     minutes = max(min_minutes, int((now - applied_at).total_seconds() // 60) or min_minutes)
     minutes = min(minutes, 5)
-    result = detect(conn, as_of=now, window_minutes=minutes, only=only)
+    result = detect(conn, as_of=now, window_minutes=minutes, only=only, mask=store.incident_periods())
     store.add_evidence(incident_id, result["evidence"])
     watched = [a for a in (incident["signal"] or "").split(",") if a]
     rows = {s["signal"]: s for s in result["signals"]}

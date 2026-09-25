@@ -53,7 +53,7 @@ def tool(annotations: ToolAnnotations):
 
 
 def _db() -> psycopg.Connection:
-    return psycopg.connect(config.env("DATABASE_URL"))
+    return config.db_connect()
 
 
 def _now() -> datetime:
@@ -149,7 +149,7 @@ def get_evidence(incident_id: str, evidence_ids: list[str]) -> list[dict]:
 def run_detector(window_minutes: int = 5, open_incident: bool = True) -> dict:
     """Robust z-score of every signal in the last window vs the previous 2 hours. Opens an incident on alarm."""
     with _db() as conn:
-        result = detector.detect(conn, window_minutes=window_minutes)
+        result = detector.detect(conn, window_minutes=window_minutes, mask=store.incident_periods())
     store.add_evidence(None, result["evidence"])
     summary = [{k: s[k] for k in ("signal", "current", "baseline_median", "z", "volume", "alarm", "evidence")}
                for s in result["signals"]]
@@ -159,6 +159,11 @@ def run_detector(window_minutes: int = 5, open_incident: bool = True) -> dict:
         if existing:
             out["incident_id"], out["incident_status"] = existing[0]["id"], existing[0]["status"]
             out["note"] = "an incident is already open; continuing it"
+        elif (draining := _draining(window_minutes)) is not None:
+            out["suppressed_by"] = draining
+            out["note"] = (f"alarms come only from {draining['retired_requests_in_window']} requests served by a config "
+                           f"that is no longer live; live traffic (prompt v{draining['live']['prompt_version']}, "
+                           f"{draining['live']['model']}) is in band")
         elif (blocked := _unchanged_since_last_close()) is not None:
             out["suppressed_by"] = blocked
             out["note"] = (f"still alarming, but {blocked['id']} already ended {blocked['status']} and nothing has "
@@ -168,6 +173,28 @@ def run_detector(window_minutes: int = 5, open_incident: bool = True) -> dict:
             out["incident_id"] = store.open_incident(",".join(result["alarms"]), ids, result["as_of"], window_minutes)
             out["incident_status"] = "detected"
     return out
+
+
+def _draining(window_minutes: int) -> dict | None:
+    """Alarms that come only from traffic served by a retired config are old traffic draining out of the
+    window after a revert, not a new incident. Live traffic that still alarms (or re-applying a reverted
+    change) is a real incident."""
+    live = _live()
+    with _db() as conn:
+        retired = conn.execute(
+            """select count(*) from requests where ts >= now() - make_interval(mins => %s)
+               and (prompt_version <> %s or model <> %s)""",
+            (window_minutes, live["prompt_version"], live["model"])).fetchone()[0]
+        if not retired:
+            return None
+        mask = store.incident_periods()
+        for dim in ("prompt_version", "model"):
+            run = detector.detect(conn, window_minutes=window_minutes, only={"dimension": dim, "value": live[dim]},
+                                  mask=mask)
+            # Healthy means judged healthy: too little live traffic yet is not evidence of recovery.
+            if run["alarms"] or not all(sig["volume_ok"] for sig in run["signals"]):
+                return None
+    return {"live": live, "retired_requests_in_window": retired}
 
 
 def _unchanged_since_last_close() -> dict | None:
@@ -198,7 +225,7 @@ def localize(incident_id: str) -> dict:
     as_of = datetime.fromisoformat(incident["detected_as_of"])
     with _db() as conn:
         result = localize_mod.localize(conn, as_of=as_of, window_minutes=incident["window_minutes"],
-                                       alarms=incident["signal"].split(","))
+                                       alarms=incident["signal"].split(","), mask=store.incident_periods())
         by_category = sources.window_stats(conn, as_of - timedelta(minutes=incident["window_minutes"]), as_of, "category")
     store.add_evidence(incident_id, result["evidence"] + by_category["evidence"])
     worst = sorted((s for s in by_category["segments"] if s.get("eval_score") is not None),
@@ -273,10 +300,12 @@ def check_gates(incident_id: str, dimension: str, value: str) -> dict:
     candidate = {"dimension": dimension, "value": value}
     as_of, window = datetime.fromisoformat(incident["detected_as_of"]), incident["window_minutes"]
     with _db() as conn:
-        loc = localize_mod.localize(conn, as_of=as_of, window_minutes=window, alarms=incident["signal"].split(","))
+        mask = store.incident_periods()
+        loc = localize_mod.localize(conn, as_of=as_of, window_minutes=window, alarms=incident["signal"].split(","),
+                                    mask=mask)
         mine = next((c for c in loc["candidates"] if c["dimension"] == dimension and str(c["value"]) == value), None)
-        onset = detector.onset(conn, (mine["explains"] if mine else incident["signal"].split(","))[0],
-                               as_of=as_of, window_minutes=window)
+        onset = detector.onset(conn, mine["explains"] if mine else incident["signal"].split(","),
+                               as_of=as_of, window_minutes=window, mask=mask)
         chg = sources.changes(conn, as_of - timedelta(minutes=60), _now())
         seg_total = conn.execute(
             f"select count(*) filter (where {dimension}::text = %s), count(*) from requests "

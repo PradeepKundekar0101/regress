@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Regress Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #ECEEF1; --panel: #FFFFFF; --panel-2: #F6F7F9; --ink: #121519; --muted: #5B6470; --line: #D9DDE3;
+    --ok: #1F7A5A; --ok-tint: #E4F2EC; --alarm: #C2410C; --alarm-tint: #FCEBDD;
+    --human: #6D28D9; --human-tint: #F1EAFD; --human-line: #D6C5F7; --neutral-tint: #EEF0F3;
+    --band: rgba(31, 122, 90, 0.12);
+    --cond: "IBM Plex Sans Condensed", system-ui, sans-serif; --sans: "IBM Plex Sans", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0F1216; --panel: #171B21; --panel-2: #1D222A; --ink: #E7EAEE; --muted: #97A1AD; --line: #2A313B;
+      --ok: #4CC08F; --ok-tint: #173227; --alarm: #F08A4B; --alarm-tint: #3A2217;
+      --human: #A78BFA; --human-tint: #251C3D; --human-line: #43347A; --neutral-tint: #222831;
+      --band: rgba(76, 192, 143, 0.14);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 400 14px/1.5 var(--sans); }
+  a { color: inherit; }
+  button, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--human); outline-offset: 2px; }
+  .mono { font-family: var(--mono); }
+  .muted { color: var(--muted); }
+
+  header { display: flex; align-items: baseline; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { margin: 0; font: 600 18px/1 var(--cond); letter-spacing: .01em; }
+  header .sub { color: var(--muted); }
+  header .live { margin-left: auto; font: 500 12px/1 var(--mono); color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: inline-block; }
+  .dot.stale { background: var(--alarm); }
+
+  .strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
+  .tile { background: var(--panel); padding: 10px 14px 8px; min-width: 0; }
+  .tile .name { font: 500 12px/1.2 var(--cond); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); display: flex; justify-content: space-between; }
+  .tile .val { font: 500 20px/1.3 var(--mono); }
+  .tile.alarm .val, .tile.alarm .name span { color: var(--alarm); }
+  .tile .base { font: 400 11px/1.3 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile svg { width: 100%; height: 34px; display: block; margin-top: 4px; }
+
+  .layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; padding: 16px 20px 40px; max-width: 1400px; margin: 0 auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .panel > h2 { margin: 0; padding: 10px 14px; font: 600 13px/1.2 var(--cond); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); }
+  aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .list { list-style: none; margin: 0; padding: 4px; }
+  .list li button { width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 7px; cursor: pointer; display: grid; gap: 2px; }
+  .list li button:hover { background: var(--panel-2); }
+  .list li button[aria-current="true"] { background: var(--neutral-tint); }
+  .list .row1 { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+  .list .id { font: 500 12px/1.4 var(--mono); }
+  .list .when { font: 400 11px/1.4 var(--mono); color: var(--muted); }
+  .pill { font: 500 11px/1 var(--mono); padding: 3px 7px; border-radius: 999px; background: var(--neutral-tint); color: var(--muted); white-space: nowrap; }
+  .pill.ok { background: var(--ok-tint); color: var(--ok); }
+  .pill.alarm { background: var(--alarm-tint); color: var(--alarm); }
+  .pill.human { background: var(--human-tint); color: var(--human); }
+  .changes li { padding: 7px 12px; border-top: 1px solid var(--line); font-size: 13px; }
+  .changes li:first-child { border-top: 0; }
+  .changes .who { font: 400 11px/1.4 var(--mono); color: var(--muted); }
+
+  main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+  .head { padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; }
+  .head h2 { margin: 0; font: 600 20px/1.2 var(--cond); }
+  .head .links { margin-left: auto; display: flex; gap: 14px; font-size: 13px; }
+  .steps { display: flex; flex-wrap: wrap; gap: 0; padding: 0 16px 14px; list-style: none; margin: 0; }
+  .steps { row-gap: 8px; }
+  .steps li { position: relative; font-size: 12px; }
+  .steps li + li { padding-left: 22px; }
+  .steps li + li::before { content: "→"; position: absolute; left: 6px; top: 0; color: var(--muted); }
+  .steps .st { font: 500 12px/1.4 var(--mono); }
+  .steps .t { font: 400 11px/1.3 var(--mono); color: var(--muted); display: block; }
+  .steps li.bad .st { color: var(--alarm); }
+  .steps li.good .st { color: var(--ok); }
+
+  .decision { border: 1.5px solid var(--human); background: var(--human-tint); border-radius: 12px; padding: 16px 18px; }
+  .decision .label { font: 600 12px/1 var(--cond); letter-spacing: .08em; text-transform: uppercase; color: var(--human); }
+  .decision .change { font: 500 22px/1.35 var(--mono); margin: 8px 0 4px; overflow-wrap: anywhere; }
+  .decision .change .arrow { color: var(--human); }
+  .decision dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 10px 0 14px; font-size: 13px; }
+  .decision dt { color: var(--muted); }
+  .decision dd { margin: 0; }
+  .decision .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+  .btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 9px 16px; cursor: pointer; font-weight: 600; }
+  .btn.primary { background: var(--human); border-color: var(--human); color: #fff; }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .decision textarea { width: 100%; min-height: 56px; border: 1px solid var(--human-line); border-radius: 8px; padding: 8px 10px; background: var(--panel); resize: vertical; }
+  .decision .deny-box { display: none; width: 100%; gap: 8px; flex-direction: column; }
+  .decision .deny-box.open { display: flex; }
+  .decision .msg { font-size: 13px; }
+  .decision.done { border-color: var(--line); background: var(--panel); }
+
+  .gates { list-style: none; margin: 0; padding: 6px 0; }
+  .gates li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 7px 16px; font-size: 13px; }
+  .gates .mark { font: 600 13px/1.5 var(--mono); }
+  .gates .pass { color: var(--ok); }
+  .gates .fail { color: var(--alarm); }
+  .gates .gname { font-weight: 600; }
+  .gates .gdetail { color: var(--muted); font: 400 12px/1.5 var(--mono); overflow-wrap: anywhere; }
+
+  .report { padding: 12px 16px 16px; white-space: pre-wrap; font-size: 13.5px; overflow-wrap: anywhere; }
+  .report strong { font-weight: 600; }
+  .closing { padding: 0 16px 14px; font-size: 13px; color: var(--muted); white-space: pre-wrap; }
+
+  details.group { border-top: 1px solid var(--line); }
+  details.group:first-of-type { border-top: 0; }
+  details.group summary { padding: 9px 16px; cursor: pointer; font-size: 13px; display: flex; justify-content: space-between; }
+  details.group summary::-webkit-details-marker { display: none; }
+  .ev { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .ev td { padding: 5px 16px; border-top: 1px solid var(--line); vertical-align: top; }
+  .ev td.v { font-family: var(--mono); white-space: nowrap; text-align: right; }
+  .ev button { border: 0; background: none; padding: 0; cursor: pointer; text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; }
+  .prov { margin: 0 16px 12px; padding: 10px 12px; background: var(--panel-2); border-radius: 8px; font: 400 12px/1.5 var(--mono); white-space: pre-wrap; overflow-x: auto; }
+  .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
+  .err { color: var(--alarm); padding: 10px 16px; font-size: 13px; }
+
+  @media (max-width: 900px) {
+    .strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tile:last-child:nth-child(odd) { grid-column: span 2; }
+    .layout { grid-template-columns: 1fr; padding: 12px 16px 32px; }
+    header { padding: 12px 16px; flex-wrap: wrap; }
+    .head .links { margin-left: 0; width: 100%; }
+  }
+  @media (prefers-reduced-motion: no-preference) { .decision { transition: background .2s, border-color .2s; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Regress</h1>
+  <span class="sub">On call for the Adopt.ai support bot</span>
+  <span class="live" id="live"><span class="dot" id="live-dot"></span><span id="live-text">connecting</span></span>
+</header>
+
+<section class="strip" id="strip" aria-label="Live signals"></section>
+
+<div class="layout">
+  <aside>
+    <section class="panel">
+      <h2>Incidents</h2>
+      <ul class="list" id="incidents"><li class="empty">No incidents yet.</li></ul>
+    </section>
+    <section class="panel">
+      <h2>Recent changes</h2>
+      <ul class="list changes" id="changes"></ul>
+    </section>
+  </aside>
+  <main id="detail"><div class="panel empty">Select an incident.</div></main>
+</div>
+
+<script>
+const SIGNALS = [
+  { key: "eval_score", det: "eval_score", name: "Eval score", fmt: (v) => v.toFixed(2) },
+  { key: "format_valid", det: "format_valid", name: "Format valid", fmt: (v) => `${(v * 100).toFixed(0)}%` },
+  { key: "escalation_correct", det: "escalation_correct", name: "Escalation", fmt: (v) => `${(v * 100).toFixed(0)}%` },
+  { key: "latency_p95_ms", det: "latency_p95_ms", name: "Latency p95", fmt: (v) => `${(v / 1000).toFixed(1)} s` },
+  { key: "cost_per_request_usd", det: "cost_per_request_usd", name: "Cost / request", fmt: (v) => `$${v.toFixed(5)}` },
+];
+const STATUS_TONE = { verified: "ok", applied: "ok", checkpointed: "human", approved: "human", denied: "", not_localized: "",
+  insufficient_data: "", conflict: "alarm", verify_failed: "alarm", detected: "alarm", planned: "alarm", replayed: "alarm" };
+const ORDER = ["detected", "planned", "replayed", "checkpointed", "approved", "applied", "verified"];
+let selected = null, lastDetail = null, openEvidence = null;
+
+const $ = (id) => document.getElementById(id);
+function el(tag, attrs = {}, ...children) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v; else if (k.startsWith("on")) n[k] = v; else if (v !== null && v !== undefined) n.setAttribute(k, v);
+  }
+  for (const c of children.flat()) if (c !== null && c !== undefined) n.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return n;
+}
+const time = (iso) => iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+const ago = (iso) => { const s = (Date.now() - new Date(iso)) / 1000; return s < 90 ? `${Math.round(s)}s ago` : s < 5400 ? `${Math.round(s / 60)}m ago` : `${Math.round(s / 3600)}h ago`; };
+async function getJSON(url, opts) { const r = await fetch(url, opts); const body = await r.json().catch(() => ({})); if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`); return body; }
+
+function sparkline(points, det) {
+  const W = 200, H = 34, pad = 3;
+  const vals = points.map((p) => p.v).filter((v) => v !== null);
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("preserveAspectRatio", "none"); svg.setAttribute("aria-hidden", "true");
+  if (vals.length < 2) return svg;
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (det) { const band = 3.5 * Math.max(det.mad || 0, 1e-9) / 0.6745; lo = Math.min(lo, det.baseline_median - band); hi = Math.max(hi, det.baseline_median + band); }
+  if (hi - lo < 1e-9) { hi += 1; lo -= 1; }
+  const x = (i) => pad + (i / (points.length - 1)) * (W - 2 * pad), y = (v) => H - pad - ((v - lo) / (hi - lo)) * (H - 2 * pad);
+  if (det) {
+    const band = 3.5 * Math.max(det.mad || 0, 1e-9) / 0.6745;
+    const r = document.createElementNS(svg.namespaceURI, "rect");
+    const top = y(det.baseline_median + band), bot = y(det.baseline_median - band);
+    r.setAttribute("x", 0); r.setAttribute("width", W); r.setAttribute("y", Math.min(top, bot)); r.setAttribute("height", Math.max(1, Math.abs(bot - top)));
+    r.setAttribute("fill", "var(--band)"); svg.append(r);
+  }
+  const d = points.map((p, i) => p.v === null ? null : `${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).filter(Boolean).join(" L");
+  const path = document.createElementNS(svg.namespaceURI, "path");
+  path.setAttribute("d", `M${d}`); path.setAttribute("fill", "none"); path.setAttribute("stroke", det && det.alarm ? "var(--alarm)" : "var(--ink)");
+  path.setAttribute("stroke-width", "1.5"); path.setAttribute("vector-effect", "non-scaling-stroke"); svg.append(path);
+  return svg;
+}
+
+async function refreshSignals() {
+  const data = await getJSON("/api/signals?minutes=60");
+  const strip = $("strip"); strip.replaceChildren();
+  for (const s of SIGNALS) {
+    const det = data.detector.signals[s.det];
+    const pts = data.series.map((r) => ({ v: r[s.key] }));
+    const alarm = det && det.alarm;
+    strip.append(el("div", { class: `tile${alarm ? " alarm" : ""}` },
+      el("div", { class: "name" }, s.name, alarm ? el("span", {}, `z ${det.z}`) : null),
+      el("div", { class: "val" }, det && det.current !== null ? s.fmt(det.current) : "–"),
+      el("div", { class: "base" }, !det ? "no data" : det.baseline_ok === false ? `warming up · ${det.baseline_buckets}/6 buckets` : `normal ${s.fmt(det.baseline_median)}`),
+      sparkline(pts, det)));
+  }
+  const alarms = data.detector.alarms;
+  const thin = Object.values(data.detector.signals).some((v) => v.baseline_ok === false);
+  $("live-text").textContent = alarms.length ? `alarm: ${alarms.join(", ")}`
+    : thin ? "baseline warming up: the detector needs 30 min of clean history"
+    : `all signals in band · ${time(new Date().toISOString())}`;
+  $("live-dot").classList.toggle("stale", thin);
+}
+
+async function refreshIncidents() {
+  const rows = await getJSON("/api/incidents");
+  const list = $("incidents"); list.replaceChildren();
+  if (!rows.length) { list.append(el("li", { class: "empty" }, "No incidents yet.")); return; }
+  if (!selected) selected = (rows.find((r) => !["verified", "denied", "not_localized", "insufficient_data", "conflict", "verify_failed"].includes(r.status)) || rows[0]).id;
+  for (const r of rows) {
+    list.append(el("li", {}, el("button", { type: "button", "aria-current": String(r.id === selected), onclick: () => { selected = r.id; openEvidence = null; refreshAll(); } },
+      el("div", { class: "row1" }, el("span", { class: "id" }, r.id.replace("inc_", "")), el("span", { class: `pill ${STATUS_TONE[r.status] || ""}` }, r.status.replace("_", " "))),
+      el("div", { class: "when" }, `${r.verdict || "investigating"} · ${ago(r.created_at)}`))));
+  }
+}
+
+async function refreshChanges() {
+  const rows = await getJSON("/api/changes?minutes=240");
+  const list = $("changes"); list.replaceChildren();
+  if (!rows.length) { list.append(el("li", { class: "empty" }, "No changes in the last 4 hours.")); return; }
+  for (const c of rows.slice(0, 8)) {
+    const text = `${c.kind} ${c.from} → ${c.to}`;
+    list.append(el("li", {}, c.commit_url ? el("a", { href: c.commit_url, target: "_blank", rel: "noopener" }, text) : text,
+      el("div", { class: "who" }, `${c.actor} · ${time(c.ts)}`)));
+  }
+}
+
+function renderReport(text) {
+  const box = el("div", { class: "report" });
+  for (const part of text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\(https?:\/\/[^)\s]+\))/g)) {
+    const link = part.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+    if (link) box.append(el("a", { href: link[2], target: "_blank", rel: "noopener" }, link[1]));
+    else if (part.startsWith("**") && part.endsWith("**")) box.append(el("strong", {}, part.slice(2, -2)));
+    else box.append(document.createTextNode(part));
+  }
+  return box;
+}
+
+function decisionCard(d) {
+  const p = d.proposal, pending = d.session && d.session.pending && d.session.pending[0];
+  const change = p.action === "rollback_execute"
+    ? [`${p.prompt} · ${p.label}  `, `v${p.from_version}`, el("span", { class: "arrow" }, " → "), `v${p.to_version}`]
+    : [`route ${p.route}  `, p.from_model, el("span", { class: "arrow" }, " → "), p.to_model];
+  const blast = p.blast_radius || {};
+  const msg = el("div", { class: "msg" });
+  const allow = el("button", { class: "btn primary", type: "button" }, p.action === "rollback_execute" ? "Approve rollback" : "Approve route revert");
+  const denyOpen = el("button", { class: "btn", type: "button" }, "Deny…");
+  const reason = el("textarea", { placeholder: "Why not? The agent records this and stops.", "aria-label": "Reason for denying" });
+  const denySend = el("button", { class: "btn", type: "button" }, "Deny and record");
+  const denyBox = el("div", { class: "deny-box" }, reason, el("div", {}, denySend));
+  async function send(decision) {
+    allow.disabled = denyOpen.disabled = denySend.disabled = true;
+    msg.textContent = decision === "allow" ? "Sending approval…" : "Sending denial…";
+    try {
+      await getJSON(`/api/incidents/${d.id}/decision`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, reason: reason.value.trim() || null }) });
+      msg.textContent = decision === "allow" ? "Approved. Regress is applying the change and will verify it on fresh traffic." : "Denied. Regress records the decision and stops.";
+    } catch (e) { msg.textContent = `Not sent: ${e.message}`; allow.disabled = denyOpen.disabled = denySend.disabled = false; }
+  }
+  allow.onclick = () => send("allow");
+  denyOpen.onclick = () => { denyBox.classList.add("open"); reason.focus(); };
+  denySend.onclick = () => send("deny");
+  const waiting = !!pending;
+  if (!waiting) { allow.disabled = denyOpen.disabled = true; msg.textContent = "Waiting for the agent to request approval in its session."; }
+  return el("section", { class: "decision", "aria-label": "Decision" },
+    el("div", { class: "label" }, "Your decision"),
+    el("div", { class: "change" }, change),
+    el("dl", {},
+      el("dt", {}, "Verdict"), el("dd", {}, d.verdict),
+      el("dt", {}, "Blast radius"), el("dd", {}, `${blast.scope || ""}${blast.requests_in_window ? ` · ${blast.affected_requests_in_window} of ${blast.requests_in_window} requests in the incident window` : ""}`),
+      el("dt", {}, "Undo"), el("dd", {}, p.undo),
+      p.change_commit && p.change_commit.message ? [el("dt", {}, "Caused by"), el("dd", {}, p.change_commit.url ? el("a", { href: p.change_commit.url, target: "_blank", rel: "noopener" }, p.change_commit.message) : p.change_commit.message)] : null),
+    el("div", { class: "actions" }, allow, denyOpen, denyBox), msg);
+}
+
+function decidedCard(d, t) {
+  const p = d.proposal;
+  const change = p.action === "rollback_execute" ? `${p.prompt} · ${p.label}  v${p.from_version} → v${p.to_version}` : `route ${p.route}  ${p.from_model} → ${p.to_model}`;
+  const next = { approved: "Applying the change…", applied: "Applied. Verifying on fresh traffic…", verified: "Applied and verified on fresh traffic.",
+    verify_failed: "Applied, but fresh traffic is still degraded.", denied: "Nothing was changed.", conflict: "Not applied: someone else changed the config first." }[d.status] || "";
+  return el("section", { class: "decision done", "aria-label": "Decision" },
+    el("div", { class: "label" }, t.to_status === "approved" ? `Approved at ${time(t.ts)}` : `Denied at ${time(t.ts)}`),
+    el("div", { class: "change" }, change),
+    el("div", { class: "msg" }, t.to_status === "denied" && t.reason ? `${t.reason} · ${next}` : next));
+}
+
+function evidencePanel(d) {
+  const panel = el("section", { class: "panel" }, el("h2", {}, `Evidence · ${d.evidence.length} numbers, each with its query`));
+  const rank = (g) => g.includes("replay") ? 0 : g.includes("detector") && !g.includes("onset") ? 1 : g.includes("user_signals") ? 2 : 3;
+  const groups = {};
+  for (const e of d.evidence) (groups[e.computed_by] ||= []).push(e);
+  const names = Object.keys(groups).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  names.forEach((g, i) => {
+    const rows = groups[g];
+    const table = el("table", { class: "ev" });
+    for (const e of rows.slice(0, 60)) {
+      const cell = el("button", { type: "button", onclick: async () => { openEvidence = e.id; await showProvenance(d.id, e.id, tr); } }, e.label);
+      const tr = el("tr", {}, el("td", {}, cell), el("td", { class: "v" }, e.value));
+      table.append(tr);
+    }
+    const det = el("details", { class: "group" }, el("summary", {}, el("span", {}, g), el("span", { class: "muted mono" }, rows.length)), table);
+    if (i === 0) det.open = true;
+    panel.append(det);
+  });
+  return panel;
+}
+
+async function showProvenance(incident, evId, row) {
+  const next = row.nextElementSibling;
+  if (next && next.dataset.prov) { next.remove(); return; }
+  const ev = await getJSON(`/api/incidents/${incident}/evidence/${evId}`);
+  const src = { ...ev.source }; const query = src.query; delete src.query;
+  const pre = el("div", { class: "prov" }, `${ev.formatted}  (${ev.unit}) · computed by ${ev.computed_by}\n`,
+    query ? `\n${query.trim()}\n` : "", `\n${JSON.stringify(src, null, 2)}`,
+    ev.trace_links.length ? ["\n\nTraces: ", ...ev.trace_links.slice(0, 5).map((u, i) => el("a", { href: u, target: "_blank", rel: "noopener" }, `trace ${i + 1} `))] : null);
+  const holder = el("tr", {}, el("td", { colspan: "2" }, pre)); holder.dataset.prov = "1";
+  row.after(holder);
+}
+
+function renderDetail(d) {
+  const main = $("detail"); main.replaceChildren();
+  const s = d.session || {};
+  const head = el("section", { class: "panel" },
+    el("div", { class: "head" },
+      el("h2", {}, d.verdict || "Investigating"),
+      el("span", { class: `pill ${STATUS_TONE[d.status] || ""}` }, d.status.replace("_", " ")),
+      el("span", { class: "mono muted" }, d.id),
+      el("div", { class: "links" },
+        s.url ? el("a", { href: s.url, target: "_blank", rel: "noopener" }, "Agent session") : null,
+        ...(d.actions || []).filter((a) => a.commit_url).map((a) => el("a", { href: a.commit_url, target: "_blank", rel: "noopener" }, `Commit ${a.from} → ${a.to}`)))),
+    el("div", { class: "muted", style: "padding: 0 16px 10px; font-size: 13px" }, `Alarmed on ${d.signal.replaceAll(",", ", ")}`),
+    el("ol", { class: "steps" }, d.transitions.map((t) => el("li", { class: ["not_localized", "denied", "conflict", "verify_failed", "insufficient_data"].includes(t.to_status) ? "bad" : t.to_status === "verified" ? "good" : "" },
+      el("span", { class: "st" }, t.to_status.replace("_", " ")), el("span", { class: "t" }, time(t.ts))))));
+  main.append(head);
+  if (d.proposal && d.status === "checkpointed") main.append(decisionCard(d));
+  const decided = d.transitions.find((t) => ["approved", "denied"].includes(t.to_status));
+  if (d.proposal && decided) main.append(decidedCard(d, decided));
+  if (s.unavailable) main.append(el("div", { class: "panel err" }, `TrueForge unavailable: ${s.unavailable}`));
+  if (s.error) main.append(el("div", { class: "panel err" }, `Agent turn failed: ${s.error}`));
+  if (d.gates) main.append(el("section", { class: "panel" }, el("h2", {}, "Correlation gates"),
+    el("ul", { class: "gates" }, d.gates.map((g) => el("li", {},
+      el("span", { class: `mark ${g.passed ? "pass" : "fail"}` }, g.passed ? "✓" : "✗"),
+      el("div", {}, el("div", { class: "gname" }, `Gate ${g.gate}`), el("div", { class: "gdetail" }, g.detail)))))));
+  if (s.report) main.append(el("section", { class: "panel" }, el("h2", {}, "Report"), renderReport(s.report), s.closing ? (() => { const c = renderReport(s.closing); c.className = "closing"; return c; })() : null));
+  main.append(evidencePanel(d));
+}
+
+async function refreshDetail() {
+  if (!selected) return;
+  const d = await getJSON(`/api/incidents/${selected}`);
+  const key = JSON.stringify([d.status, d.transitions.length, d.session && d.session.status, d.session && d.session.pending && d.session.pending.length, d.evidence.length, d.session && d.session.report && d.session.report.length]);
+  if (key === lastDetail) return;
+  const hadTextFocus = document.activeElement && document.activeElement.tagName === "TEXTAREA";
+  if (hadTextFocus) return;
+  lastDetail = key;
+  renderDetail(d);
+}
+
+async function refreshAll() {
+  try {
+    await Promise.all([refreshSignals(), refreshIncidents(), refreshChanges()]);
+    lastDetail = null;
+    await refreshDetail();
+  } catch (e) { $("live-dot").classList.add("stale"); $("live-text").textContent = `reconnecting: ${e.message}`; }
+}
+
+refreshAll();
+setInterval(async () => {
+  try { await Promise.all([refreshSignals(), refreshIncidents(), refreshChanges()]); await refreshDetail(); }
+  catch (e) { $("live-dot").classList.add("stale"); $("live-text").textContent = `reconnecting: ${e.message}`; }
+}, 4000);
+</script>
+</body>
+</html>

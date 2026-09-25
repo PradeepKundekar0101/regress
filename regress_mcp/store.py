@@ -9,7 +9,7 @@ import sqlite3
 import uuid
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 DEFAULT_PATH = Path(__file__).resolve().parent.parent / ".regress" / "state.sqlite"
@@ -172,6 +172,26 @@ class Store:
                    where i.status in ('not_localized', 'insufficient_data', 'denied', 'conflict', 'verify_failed')
                    group by i.id order by closed_at desc limit 1""").fetchone()
         return dict(row) if row else None
+
+    def incident_periods(self, lead_minutes: int = 10, tail_minutes: int = 3) -> list[tuple[datetime, datetime]]:
+        """Periods of known incidents, to keep their traffic out of detector baselines.
+
+        From `lead_minutes` before the alarming window (the regression began before it was detected) to
+        `tail_minutes` after the incident's last transition (prompt caches drain after a rollback);
+        open incidents run to now.
+        """
+        with self._conn() as conn:
+            rows = conn.execute(
+                """select i.detected_as_of, i.window_minutes, i.status, max(t.ts) as last_ts
+                   from incidents i join transitions t on t.incident_id = i.id
+                   where i.detected_as_of is not null group by i.id""").fetchall()
+        now = datetime.now(timezone.utc)
+        periods = []
+        for r in rows:
+            start = datetime.fromisoformat(r["detected_as_of"]) - timedelta(minutes=(r["window_minutes"] or 5) + lead_minutes)
+            end = now if r["status"] not in TERMINAL else datetime.fromisoformat(r["last_ts"]) + timedelta(minutes=tail_minutes)
+            periods.append((start, end))
+        return periods
 
     def incident(self, incident_id: str) -> dict:
         with self._conn() as conn:

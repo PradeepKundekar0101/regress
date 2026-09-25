@@ -9,13 +9,14 @@ from datetime import datetime, timedelta, timezone
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.range import Range
 
 from regress_mcp.store import Evidence
 
 BASELINE_MINUTES = 120
 Z_THRESHOLD = 3.5
 MIN_VOLUME = 20
-MIN_BASELINE_BUCKETS = 3
+MIN_BASELINE_BUCKETS = 6   # 30 minutes of clean (unmasked) history before anything counts as normal
 DIMENSIONS = {"prompt_version", "model", "category"}
 
 
@@ -59,6 +60,8 @@ scoped as (
          (r.ts >= p.as_of - p.w) as is_current
   from requests r, params p
   where r.ts >= p.as_of - p.w - p.b and r.ts < p.as_of
+    -- Baseline masking: traffic from known incident periods is not "normal".
+    and (r.ts >= p.as_of - p.w or not (r.ts <@ any(%(mask)s::tstzrange[])))
     {{exclude_clause}}
 ),
 per_bucket as (
@@ -148,18 +151,26 @@ def _label_scope(exclude: dict | None, only: dict | None) -> str:
 
 
 def detect(conn: psycopg.Connection, *, as_of: datetime | None = None, window_minutes: int = 5,
-           exclude: dict | None = None, only: dict | None = None) -> dict:
-    """Score every signal. Returns {"as_of", "window", "signals": [...], "alarms": [...], "evidence": [...]}."""
+           exclude: dict | None = None, only: dict | None = None,
+           mask: list[tuple[datetime, datetime]] | None = None) -> dict:
+    """Score every signal. Returns {"as_of", "window", "signals": [...], "alarms": [...], "evidence": [...]}.
+
+    `mask` lists incident periods whose traffic is left out of the baseline.
+    """
     as_of = as_of or datetime.now(timezone.utc)
     clause, extra = _segment_clause(exclude, only)
     sql = DETECTOR_SQL.replace("{exclude_clause}", clause)
     params = {"as_of": as_of, "window_minutes": window_minutes, "baseline_minutes": BASELINE_MINUTES,
-              "min_volume": MIN_VOLUME, "min_baseline_buckets": MIN_BASELINE_BUCKETS, **extra}
+              "min_volume": MIN_VOLUME, "min_baseline_buckets": MIN_BASELINE_BUCKETS,
+              "mask": [Range(start, end) for start, end in (mask or [])], **extra}
     rows = conn.cursor(row_factory=dict_row).execute(sql, params).fetchall()
 
     window_from = (as_of - timedelta(minutes=window_minutes)).isoformat(timespec="seconds")
     window_to = as_of.isoformat(timespec="seconds")
-    source = {"kind": "sql", "query_name": "detector", "params": {k: str(v) for k, v in params.items()}}
+    source = {"kind": "sql", "query_name": "detector",
+              "params": {**{k: str(v) for k, v in params.items() if k != "mask"},
+                         "baseline_mask": [[start.isoformat(timespec="seconds"), end.isoformat(timespec="seconds")]
+                                           for start, end in (mask or [])]}}
     signals, evidence = [], []
     for row in rows:
         spec = SIGNAL_BY_NAME[row["signal"]]
@@ -189,22 +200,26 @@ def detect(conn: psycopg.Connection, *, as_of: datetime | None = None, window_mi
     }
 
 
-def onset(conn: psycopg.Connection, signal: str, *, as_of: datetime | None = None, window_minutes: int = 5,
-          lookback_minutes: int = 30) -> dict:
-    """Earliest window end, scanning minute by minute, from which `signal` alarms continuously up to as_of."""
+def onset(conn: psycopg.Connection, signals: list[str], *, as_of: datetime | None = None, window_minutes: int = 5,
+          lookback_minutes: int = 30, mask: list[tuple[datetime, datetime]] | None = None) -> dict:
+    """Earliest window end, scanning minute by minute, from which any of `signals` alarms in every window up to
+    as_of. Any-of, because one noisy signal (a rare escalation question) can dip below threshold for a
+    minute while the regression is plainly still on."""
     as_of = as_of or datetime.now(timezone.utc)
     first = None
     for step in range(lookback_minutes, -1, -1):
         t = as_of - timedelta(minutes=step)
-        alarming = signal in detect(conn, as_of=t, window_minutes=window_minutes)["alarms"]
+        alarms = detect(conn, as_of=t, window_minutes=window_minutes, mask=mask)["alarms"]
+        alarming = any(s in alarms for s in signals)
         if alarming and first is None:
             first = t
         elif not alarming:
             first = None
+    label = ", ".join(signals)
     if first is None:
-        return {"signal": signal, "onset": None, "evidence": []}
-    ev = Evidence(f"{signal} first alarming window end (continuous to {as_of:%H:%M} UTC)", first.timestamp(),
+        return {"signals": signals, "onset": None, "evidence": []}
+    ev = Evidence(f"first alarming window end for {label} (continuous to {as_of:%H:%M} UTC)", first.timestamp(),
                   "unix_ts", {"kind": "sql", "query_name": "detector", "params": {"scan": "1-minute steps",
-                  "lookback_minutes": lookback_minutes, "window_minutes": window_minutes}},
+                  "lookback_minutes": lookback_minutes, "window_minutes": window_minutes, "signals": signals}},
                   "regress-mcp/detector.onset", first.isoformat(timespec="seconds"), first.isoformat(timespec="seconds"))
-    return {"signal": signal, "onset": first.isoformat(timespec="seconds"), "evidence": [ev]}
+    return {"signals": signals, "onset": first.isoformat(timespec="seconds"), "evidence": [ev]}
