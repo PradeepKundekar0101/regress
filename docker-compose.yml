@@ -1,0 +1,20 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 10s
+      retries: 5
+    restart: unless-stopped
+
+  traffic:
+    build: .
+    env_file: .env
+    environment:
+      BOT_URL: http://bot:8000
+    command: ["python", "-m", "target.traffic"]
+    depends_on:
+      bot: { condition: service_healthy }
+    restart: unless-stopped

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "adopt-bot",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "uvicorn", "target.bot.app:app", "--port", "8000"],
+      "port": 8000
+    }
+  ]
+}

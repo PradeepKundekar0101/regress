@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adopt Help</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --mist: #EEF1F5;
+    --ink: #14213D;
+    --ink-soft: #5A6478;
+    --teal: #0F766E;
+    --teal-tint: #E3F1EF;
+    --amber: #B45309;
+    --amber-tint: #FDF1E3;
+    --slip: #FFFFFF;
+    --hairline: #D5DBE3;
+    --danger: #B42318;
+    --radius: 14px;
+    --display: "Bricolage Grotesque", system-ui, sans-serif;
+    --body: "Instrument Sans", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--mist); color: var(--ink);
+    font: 400 15px/1.55 var(--body);
+    display: flex; flex-direction: column;
+  }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+  .bar { border-bottom: 1px solid var(--hairline); background: var(--mist); }
+  .bar-inner {
+    max-width: 680px; margin: 0 auto; padding: 18px 16px;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .wordmark { font: 700 22px/1 var(--display); letter-spacing: -0.02em; }
+  .wordmark span { color: var(--teal); }
+  .bar .section { color: var(--ink-soft); font-weight: 500; }
+  .bar .status { margin-left: auto; font: 400 12px/1 var(--mono); color: var(--ink-soft); }
+
+  main { flex: 1; overflow-y: auto; }
+  .thread { max-width: 680px; margin: 0 auto; padding: 32px 16px 24px; display: flex; flex-direction: column; gap: 18px; }
+
+  .empty h1 { font: 600 30px/1.15 var(--display); letter-spacing: -0.02em; margin: 24px 0 8px; }
+  .empty p { color: var(--ink-soft); margin: 0 0 20px; }
+  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .suggestions button {
+    border: 1px solid var(--hairline); background: var(--slip); border-radius: 999px;
+    padding: 8px 14px; cursor: pointer; font-size: 14px;
+  }
+  .suggestions button:hover { border-color: var(--teal); color: var(--teal); }
+
+  .ask {
+    align-self: flex-end; max-width: 80%; background: var(--ink); color: #fff;
+    padding: 10px 14px; border-radius: var(--radius) var(--radius) 4px var(--radius);
+  }
+
+  .slip {
+    align-self: flex-start; width: min(100%, 560px); background: var(--slip);
+    border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden;
+    animation: rise .22s ease-out;
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+  .slip .handoff {
+    background: var(--amber-tint); color: var(--amber); font-weight: 600; font-size: 13px;
+    padding: 8px 16px; border-bottom: 1px solid #F3D9B8;
+  }
+  .slip .answer { padding: 14px 16px 12px; white-space: pre-wrap; }
+  .ledger { margin: 0 16px; padding: 8px 0 10px; border-top: 1px dashed var(--hairline); list-style: none; }
+  .ledger li { display: flex; gap: 10px; font-size: 13px; color: var(--ink-soft); padding: 2px 0; }
+  .ledger .id { font: 500 12px/1.7 var(--mono); color: var(--teal); min-width: 44px; }
+  .slip footer {
+    display: flex; align-items: center; gap: 6px; padding: 8px 10px 8px 16px;
+    border-top: 1px solid var(--hairline); background: #FAFBFC;
+  }
+  .meta { font: 400 11px/1 var(--mono); color: var(--ink-soft); margin-right: auto; }
+  .icon-btn {
+    border: 1px solid transparent; background: none; border-radius: 8px; padding: 5px 8px;
+    cursor: pointer; color: var(--ink-soft); font-size: 13px; line-height: 1;
+  }
+  .icon-btn:hover { background: var(--mist); color: var(--ink); }
+  .icon-btn[aria-pressed="true"] { background: var(--teal-tint); color: var(--teal); border-color: #BFE0DB; }
+  .icon-btn svg { width: 15px; height: 15px; vertical-align: -3px; }
+  .error { align-self: flex-start; color: var(--danger); font-size: 14px; }
+  .typing { align-self: flex-start; color: var(--ink-soft); font-size: 14px; }
+
+  .composer { border-top: 1px solid var(--hairline); background: var(--mist); padding: 14px 16px 18px; }
+  .composer form { max-width: 680px; margin: 0 auto; display: flex; gap: 8px; }
+  .composer input {
+    flex: 1; min-width: 0; border: 1px solid var(--hairline); background: var(--slip);
+    border-radius: 12px; padding: 12px 14px;
+  }
+  .composer input:focus-visible { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-tint); }
+  .composer button {
+    border: 0; background: var(--teal); color: #fff; font-weight: 600;
+    border-radius: 12px; padding: 0 18px; cursor: pointer;
+  }
+  .composer button:disabled { opacity: .5; cursor: default; }
+
+  @media (max-width: 520px) {
+    .bar-inner { padding: 14px 16px; }
+    .bar .status { display: none; }
+    .empty h1 { font-size: 25px; }
+    .ask { max-width: 90%; }
+  }
+  @media (prefers-reduced-motion: reduce) { .slip { animation: none; } }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="bar-inner">
+    <div class="wordmark">adopt<span>.</span></div>
+    <div class="section">Help</div>
+    <div class="status" id="status"></div>
+  </div>
+</header>
+
+<main id="scroller">
+  <div class="thread" id="thread" aria-live="polite">
+    <section class="empty" id="empty">
+      <h1>Ask Ada about your money.</h1>
+      <p>Payments, cards, refunds, KYC and savings. Ada answers from the Adopt Help Centre and brings in a specialist when you need one.</p>
+      <div class="suggestions" id="suggestions"></div>
+    </section>
+  </div>
+</main>
+
+<div class="composer">
+  <form id="form">
+    <label for="q" class="visually-hidden" style="position:absolute;left:-9999px">Your question</label>
+    <input id="q" autocomplete="off" placeholder="Ask about payments, cards, refunds…" maxlength="2000">
+    <button id="send" type="submit">Ask</button>
+  </form>
+</div>
+
+<script>
+const SUGGESTIONS = [
+  "What is the daily UPI limit?",
+  "There is a charge on my card I did not make.",
+  "How do I get my annual fee waived?",
+  "Should I put my savings into index funds?",
+];
+const ICONS = {
+  up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v11H4V10h3zm0 0 4-8a3 3 0 0 1 3 3v4h5.5a2 2 0 0 1 2 2.3l-1.4 8A2 2 0 0 1 18.1 21H7"/></svg>',
+  down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V3h3v11h-3zm0 0-4 8a3 3 0 0 1-3-3v-4H4.5a2 2 0 0 1-2-2.3l1.4-8A2 2 0 0 1 5.9 3H17"/></svg>',
+};
+const sessionId = "ui-" + crypto.randomUUID().slice(0, 12);
+const $ = (id) => document.getElementById(id);
+const thread = $("thread"), form = $("form"), input = $("q"), send = $("send");
+let kbTitles = {};
+
+function el(tag, attrs = {}, text) {
+  const node = document.createElement(tag);
+  Object.entries(attrs).forEach(([k, v]) => node.setAttribute(k, v));
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function scrollDown() { $("scroller").scrollTop = $("scroller").scrollHeight; }
+
+async function feedback(traceId, kind) {
+  await fetch("/feedback", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ trace_id: traceId, kind, session_id: sessionId, source: "ui" }),
+  });
+}
+
+function renderSlip({ reply, meta }) {
+  const slip = el("article", { class: "slip" });
+  if (reply.escalate) slip.append(el("div", { class: "handoff" }, "Passed to a specialist. They will contact you shortly."));
+  slip.append(el("div", { class: "answer" }, reply.answer));
+  if (reply.citations.length) {
+    const ledger = el("ul", { class: "ledger", "aria-label": "Sources" });
+    reply.citations.forEach((id) => {
+      const li = el("li");
+      li.append(el("span", { class: "id" }, id), el("span", {}, kbTitles[id] || "Help Centre entry"));
+      ledger.append(li);
+    });
+    slip.append(ledger);
+  }
+  const footer = el("footer");
+  footer.append(el("span", { class: "meta" }, `prompt v${meta.prompt_version} · ${meta.model} · ${meta.latency_ms} ms`));
+  const rate = (kind, label, icon) => {
+    const b = el("button", { class: "icon-btn", type: "button", "aria-label": label, "aria-pressed": "false" });
+    b.innerHTML = icon;
+    b.onclick = async () => {
+      footer.querySelectorAll("[data-rate]").forEach((x) => x.setAttribute("aria-pressed", "false"));
+      b.setAttribute("aria-pressed", "true");
+      await feedback(meta.trace_id, kind);
+    };
+    b.dataset.rate = kind;
+    return b;
+  };
+  footer.append(rate("thumbs_up", "Helpful", ICONS.up), rate("thumbs_down", "Not helpful", ICONS.down));
+  if (!reply.escalate) {
+    const human = el("button", { class: "icon-btn", type: "button" }, "Talk to a person");
+    human.onclick = async () => {
+      human.disabled = true; human.textContent = "A specialist will contact you";
+      await feedback(meta.trace_id, "talk_to_human");
+    };
+    footer.append(human);
+  }
+  slip.append(footer);
+  return slip;
+}
+
+async function ask(question) {
+  $("empty")?.remove();
+  thread.append(el("div", { class: "ask" }, question));
+  const typing = el("div", { class: "typing" }, "Ada is checking the Help Centre…");
+  thread.append(typing); scrollDown();
+  send.disabled = true;
+  try {
+    const resp = await fetch("/reply", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, source: "ui", session_id: sessionId }),
+    });
+    typing.remove();
+    if (!resp.ok) throw new Error(`Ada could not answer (HTTP ${resp.status}). Try again in a moment.`);
+    thread.append(renderSlip(await resp.json()));
+  } catch (err) {
+    typing.remove();
+    thread.append(el("div", { class: "error" }, err.message.startsWith("Ada") ? err.message : "Ada is unreachable. Check your connection and try again."));
+  } finally {
+    send.disabled = false; input.focus(); scrollDown();
+  }
+}
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = "";
+  ask(q);
+});
+SUGGESTIONS.forEach((s) => {
+  const b = el("button", { type: "button" }, s);
+  b.onclick = () => ask(s);
+  $("suggestions").append(b);
+});
+fetch("/kb").then((r) => r.json()).then((rows) => rows.forEach((r) => (kbTitles[r.id] = r.title)));
+fetch("/healthz").then((r) => r.json()).then((h) => ($("status").textContent = `route: ${h.model}`)).catch(() => {});
+input.focus();
+</script>
+</body>
+</html>
