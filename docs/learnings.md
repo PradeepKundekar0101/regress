@@ -54,3 +54,12 @@ Things that cost time today and must not cost time tomorrow.
 - Excluding the only segment in a window leaves no volume and would falsely "explain" every alarm; count an alarm as explained only when the exclusion run still has volume.
 - The narrative validator must reject leftover `{{...}}`, not only unknown ids, or a malformed placeholder slips through unrendered.
 - End-to-end on the prompt fault: onset 44 s after the change, replay gap 0.51 on 20 traces, all four gates passed, rollback applied once and a second call returned `already_applied`, recovery verified on fresh v1 traffic.
+
+## Live agent runs
+
+- A regression live longer than the detector window leaves nothing to compare after excluding it (100% of the window is the bad version); localisation explains it by coverage and the proof rests on gates 1, 2 and 4.
+- After an incident ends without a fix, the watcher must not reopen it every tick while the alarms persist; wait for a new change. Without this, one live fault opened six agent sessions in ten minutes and burned the OpenAI credits.
+- Each full agent run on gpt-5-6-sol uses about 700k tokens (mostly cached): budget OpenAI credits for rehearsal plus demo.
+- The replay subagent must take the suspect from `localize`, not "the newest change": a manual revert is also a change and swapped the arms (eval gap -0.525; gate 2 correctly refused).
+- The UI Allow button resumes the session (verified); a first attempt in another browser created no turn. `python -m agent.approve <session> allow` is the fallback.
+- An agent interrupted by a provider outage after `applied` resumes cleanly from the incident state: send it a message and it verifies and closes.

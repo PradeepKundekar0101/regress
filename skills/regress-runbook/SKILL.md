@@ -17,12 +17,16 @@ Reads and replays are free. Exactly one production write exists per incident, an
 3. NOT_LOCALIZED and INSUFFICIENT_DATA are legitimate endings. Report what you checked, with numbers, and stop.
 4. Never change prompts, labels or routes any other way. The Langfuse connector is read-only for you.
 5. If a human denies the approval, call `record_decision(decision="denied")`, say what the next branch would be, and stop.
+6. Every report you show a human or post to GitHub is the validator's `rendered` text, never the `{{ev_id}}` draft.
+7. The suspect is the segment `localize` blames, never simply the newest change. If that segment is no longer live
+   (someone already reverted it), say who reverted it and when, call `record_decision(decision="not_localized")`
+   with reason "already resolved", and stop: there is nothing to roll back.
 
 ## Procedure
 
 1. **Open.** If you were given an incident id, call `get_incident`. Otherwise call `run_detector`; no alarms means stop.
 2. **Plan.** Write a short plan and call `record_plan`.
-3. **Fan out.** In one response, call `create_sub_agent` four times so they run in parallel, one per role in `contracts.md`.
+3. **Fan out.** Call `localize` yourself first to learn the suspect segment. Then, in one response, call `create_sub_agent` four times so they run in parallel, one per role in `contracts.md`; give the replay subagent the suspect segment.
    Subagents cannot see this conversation: give each the incident id, its role, its tools and its exact JSON contract.
 4. **Collect.** Parse each subagent's final message as JSON. Reject anything that is not strict JSON matching its contract (no prose, no code fences) and re-ask once.
 5. **Gate.** Call `check_gates(incident_id, dimension, value)` for the candidate the reports point to (`prompt_version` + the suspect version, or `model` + the suspect model).

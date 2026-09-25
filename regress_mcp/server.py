@@ -159,11 +159,30 @@ def run_detector(window_minutes: int = 5, open_incident: bool = True) -> dict:
         if existing:
             out["incident_id"], out["incident_status"] = existing[0]["id"], existing[0]["status"]
             out["note"] = "an incident is already open; continuing it"
+        elif (blocked := _unchanged_since_last_close()) is not None:
+            out["suppressed_by"] = blocked
+            out["note"] = (f"still alarming, but {blocked['id']} already ended {blocked['status']} and nothing has "
+                           "changed since; not opening a duplicate incident")
         else:
             ids = [s["evidence"][k] for s in result["signals"] if s["alarm"] for k in ("current", "baseline", "z")]
             out["incident_id"] = store.open_incident(",".join(result["alarms"]), ids, result["as_of"], window_minutes)
             out["incident_status"] = "detected"
     return out
+
+
+def _unchanged_since_last_close() -> dict | None:
+    """Re-investigating identical facts is noise: after an incident ends without a fix, wait for a new change."""
+    last = store.last_unresolved_close()
+    if last is None:
+        return None
+    closed_at = datetime.fromisoformat(last["closed_at"])
+    with _db() as conn:
+        latest_change = conn.execute("select max(ts) from change_log").fetchone()[0]
+    if latest_change is not None and latest_change > closed_at:
+        return None
+    if _now() - closed_at > timedelta(hours=2):
+        return None
+    return last
 
 
 @tool(ANALYSE)

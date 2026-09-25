@@ -164,6 +164,15 @@ class Store:
             ).fetchall()
         return [self._incident_dict(r) for r in rows]
 
+    def last_unresolved_close(self) -> dict | None:
+        """The most recent incident that ended without a verified fix, with the time it ended."""
+        with self._conn() as conn:
+            row = conn.execute(
+                """select i.id, i.status, max(t.ts) as closed_at from incidents i join transitions t on t.incident_id = i.id
+                   where i.status in ('not_localized', 'insufficient_data', 'denied', 'conflict', 'verify_failed')
+                   group by i.id order by closed_at desc limit 1""").fetchone()
+        return dict(row) if row else None
+
     def incident(self, incident_id: str) -> dict:
         with self._conn() as conn:
             row = conn.execute("select * from incidents where id = ?", (incident_id,)).fetchone()

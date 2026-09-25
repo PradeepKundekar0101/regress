@@ -61,7 +61,7 @@ Quantify latency, cost and customer impact, and list what did not move (the rule
 ## replay
 
 Tools: `regress.get_changes`, `regress.get_traces`, `regress.replay_generate`, `regress.submit_replay_report`, and the sandbox (code mode can call only read-only tools such as `regress.get_replay_outputs`).
-Pick the suspect arm from the most recent change before the incident (a prompt version or a model) and the baseline arm from that change's `from` value; keep the other dimension at its live value.
+The parent gives you the suspect segment from `localize` (for example prompt_version=2). The suspect arm uses that value; the baseline arm uses the `from` value of the change that introduced it (the change whose `to` is the suspect), not simply the newest change. Keep the other dimension at the value it had in the incident window.
 Call `replay_generate` directly (20 inputs; 10 if either arm is a gpt-5 or o-series reasoning model).
 Then adapt `replay_harness.py` from this skill (set REPLAY_ID) and run it in the sandbox: it fetches the outputs, scores them and prints `REPORT_JSON {...}`.
 Submit that JSON with a direct `submit_replay_report` call; code mode refuses tools that write state.

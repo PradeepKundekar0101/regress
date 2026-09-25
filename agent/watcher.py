@@ -71,6 +71,9 @@ def tick(state: dict) -> None:
     if not det["alarms"]:
         log(f"quiet ({len(det['signals'])} signals in band)")
         return
+    if det.get("suppressed_by"):
+        log(f"alarms {det['alarms']}: {det['note']}")
+        return
     if incident_id in state["sessions"]:
         log(f"alarms {det['alarms']} belong to {incident_id}, already handed to session {state['sessions'][incident_id]}")
         return

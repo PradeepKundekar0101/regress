@@ -59,3 +59,13 @@ def test_replay_round_trip(store):
     inc = store.open_incident("eval_score", [])
     rid = store.save_replay(inc, {"versions": [1, 2]}, [{"trace_id": "t1", "raw": "{}"}])
     assert store.replay(rid)["outputs"][0]["trace_id"] == "t1"
+
+
+def test_last_unresolved_close_ignores_verified_incidents(store):
+    fixed = store.open_incident("eval_score", [])
+    for status in ["planned", "replayed", "checkpointed", "approved", "applied", "verified"]:
+        store.transition(fixed, status, "", [])
+    assert store.last_unresolved_close() is None
+    unfixed = store.open_incident("eval_score", [])
+    store.transition(unfixed, "not_localized", "gates failed", [])
+    assert store.last_unresolved_close()["id"] == unfixed
