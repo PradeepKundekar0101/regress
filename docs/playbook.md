@@ -54,7 +54,6 @@ Show the approval card, the gates, the refused tampered replay report and the re
 ## 16:30 to 18:00: second fault, console, polish, README
 
 - Incident console (`console/`): approvals through the TrueForge API with the three guards; about 45 minutes with the design already settled.
-
 - Route fault to gpt-5 (quality flat, cost and p95 alarm): LOCALIZED_ROUTE, deny it on stage.
 - README: pitch, architecture, safety policy (reads free, one gated write, deletes never, failed gate cannot reach approval), how to run, AI-assistance disclosure, prior art (ONCALL, RootCauseOS).
 
@@ -71,7 +70,7 @@ Show the approval card, the gates, the refused tampered replay report and the re
 | 0:30 | `./scripts/fault_prompt.sh` then `--burst 50`: the fraud answer loses its specialist handoff. |
 | 1:00 | Watcher alarm, session opens, four subagents in parallel, sandbox replay. |
 | 2:15 | Validated report and the approval card for `rollback_execute`. |
-| 2:45 | Allow. Label flips, commit appears, verify on fresh traffic, GitHub issue. |
+| 2:45 | Approve from the console's decision card (or TrueForge's card). Label flips, commit appears, verify on fresh traffic, GitHub issue. |
 | 3:30 | `./scripts/fault_route.sh`: cost and p95 alarm, LOCALIZED_ROUTE, Deny; the agent records it and stops. |
 | 4:30 | Repo tour: state machine, gates, validator test, policy. |
 
