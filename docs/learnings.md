@@ -63,3 +63,5 @@ Things that cost time today and must not cost time tomorrow.
 - The replay subagent must take the suspect from `localize`, not "the newest change": a manual revert is also a change and swapped the arms (eval gap -0.525; gate 2 correctly refused).
 - The UI Allow button resumes the session (verified); a first attempt in another browser created no turn. `python -m agent.approve <session> allow` is the fallback.
 - An agent interrupted by a provider outage after `applied` resumes cleanly from the incident state: send it a message and it verifies and closes.
+- Kill-and-resume passed: SIGKILL of TrueForge and regress-mcp while paused at the approval card; after restart (TrueForge back in about 4 s) the session still had the same pending approval, the incident was still checkpointed, approval applied the rollback exactly once and recovery verified.
+  Restart TrueForge with the same `OUTBOUND_URL_ALLOWED_HOSTS` or it cannot reach regress-mcp.
