@@ -15,12 +15,13 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from langfuse import get_client, propagate_attributes
-from openai import OpenAI, OpenAIError
+from openai import OpenAIError
 from posthog import Posthog
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel, Field
 
 from target import config
+from target.bot import llm
 from target.bot.scoring import Scores, answer_text, parse_output, score
 
 log = logging.getLogger("adopt-bot")
@@ -34,13 +35,7 @@ state: dict = {}
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     state["langfuse"] = get_client()
-    state["openai"] = OpenAI(
-        api_key=config.env("OPENAI_API_KEY"),
-        # Explicit default: with base_url=None the SDK re-reads OPENAI_BASE_URL, which may be "".
-        base_url=config.optional_env("OPENAI_BASE_URL") or "https://api.openai.com/v1",
-        max_retries=1,
-        timeout=60,
-    )
+    state["openai"] = llm.make_client()
     state["db"] = ConnectionPool(config.env("DATABASE_URL"), min_size=1, max_size=10, open=True)
     state["posthog"] = Posthog(
         config.posthog_project_key(), host=config.env("POSTHOG_HOST"),
@@ -114,7 +109,6 @@ def reply(req: ReplyRequest, background: BackgroundTasks):
     prompt = langfuse.get_prompt(config.prompt_name(), label="production", cache_ttl_seconds=PROMPT_TTL_S)
     model = current_model()
     system = prompt.compile(kb=config.kb_text())
-    sampling = {"temperature": 0} if config.supports_temperature(model) else {}
 
     with langfuse.start_as_current_observation(name="support-reply", as_type="span", input={"question": req.question}) as root:
         with propagate_attributes(
@@ -130,48 +124,39 @@ def reply(req: ReplyRequest, background: BackgroundTasks):
         ):
             trace_id = langfuse.get_current_trace_id()
             started = time.perf_counter()
-            raw, usage, provider_error = "", None, False
+            generation, provider_error = None, False
             with langfuse.start_as_current_observation(
                 name="llm", as_type="generation", model=model, prompt=prompt,
-                model_parameters=sampling, input=[{"role": "user", "content": req.question}],
+                model_parameters=llm.sampling_params(model), input=[{"role": "user", "content": req.question}],
             ) as gen:
                 try:
-                    completion = state["openai"].chat.completions.create(
-                        model=model,
-                        **sampling,
-                        response_format={"type": "json_object"},
-                        messages=[
-                            {"role": "system", "content": system},
-                            {"role": "user", "content": req.question},
-                        ],
-                    )
-                    raw = completion.choices[0].message.content or ""
-                    usage = completion.usage
+                    generation = llm.generate(state["openai"], model, system, req.question)
                     gen.update(
-                        output=raw,
-                        usage_details={"input": usage.prompt_tokens, "output": usage.completion_tokens},
-                        cost_details=_cost_details(model, usage),
+                        output=generation.raw,
+                        usage_details={"input": generation.tokens_in, "output": generation.tokens_out},
+                        cost_details={"total": generation.cost_usd} if generation.cost_usd is not None else None,
                     )
                 except OpenAIError as exc:
                     provider_error = True
                     log.warning("provider error: %s", exc)
                     gen.update(level="ERROR", status_message=str(exc)[:500])
-            latency_ms = int((time.perf_counter() - started) * 1000)
+            latency_ms = generation.latency_ms if generation else int((time.perf_counter() - started) * 1000)
+            raw = generation.raw if generation else ""
 
             scores = score(raw, item) if not provider_error else None
             root.update(output=raw)
             if scores:
                 _score_trace(langfuse, scores)
 
-    tokens_in = usage.prompt_tokens if usage else None
-    tokens_out = usage.completion_tokens if usage else None
     background.add_task(record_request, {
         "trace_id": trace_id, "source": req.source, "session_id": session_id,
         "golden_id": req.golden_id, "category": item.category if item else None,
         "question": req.question, "prompt_name": config.prompt_name(), "prompt_version": prompt.version,
         "route": config.ROUTE_NAME, "model": model, "kb_version": config.kb_version(),
-        "latency_ms": latency_ms, "tokens_in": tokens_in, "tokens_out": tokens_out,
-        "cost_usd": config.cost_usd(model, tokens_in, tokens_out) if usage else None,
+        "latency_ms": latency_ms,
+        "tokens_in": generation.tokens_in if generation else None,
+        "tokens_out": generation.tokens_out if generation else None,
+        "cost_usd": generation.cost_usd if generation else None,
         "provider_error": provider_error, "raw_output": raw,
         **(scores.as_dict() if scores else {}),
     })
@@ -212,11 +197,6 @@ def feedback(req: FeedbackRequest) -> dict:
         properties={"trace_id": req.trace_id, "source": req.source},
     )
     return {"ok": True}
-
-
-def _cost_details(model: str, usage) -> dict | None:
-    cost = config.cost_usd(model, usage.prompt_tokens, usage.completion_tokens)
-    return {"total": cost} if cost is not None else None
 
 
 def _score_trace(langfuse, scores: Scores) -> None:

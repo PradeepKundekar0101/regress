@@ -7,6 +7,7 @@ dependencies = [
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "langfuse>=4.15.6",
+    "mcp[cli]>=2.2.0",
     "openai>=3.19.2",
     "posthog>=7.60.0",
     "psycopg-pool>=3.3.3",

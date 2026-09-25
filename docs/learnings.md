@@ -14,6 +14,12 @@ Things that cost time today and must not cost time tomorrow.
 - Do not quote values in `.env`: `docker run --env-file` keeps the quotes literally (python-dotenv and compose strip them).
 - An empty `OPENAI_BASE_URL=` breaks the OpenAI SDK even when `base_url=None` is passed, because the SDK re-reads the env var. Pass an explicit default.
 - Check the OpenAI account has credits before anything else (`429 insufficient_quota` looks like a code bug at first).
+- PostHog capture needs the project key (`phc_`); a personal key (`phx_`) gets a 401 that the SDK swallows. Reading events back (HogQL) needs the personal key and the numeric project id.
+- TrueForge refuses MCP servers on private hosts ("Outbound URL blocked for host 127.0.0.1"). Start it with `OUTBOUND_URL_ALLOWED_HOSTS='["127.0.0.1","localhost"]'`.
+- TrueForge needs a model provider (Settings > Models) before any agent runs; check `GET /api/v1/models` is non-empty.
+- MCP Python SDK 2.x renamed FastMCP to `MCPServer` (`from mcp.server.mcpserver import MCPServer`); Python attributes are snake_case (`destructive_hint`) but the wire format stays camelCase.
+- MCP 2.x hides the text of unexpected exceptions; raise `ToolError` for refusals the agent must read.
+- Code mode is on whenever the sandbox is enabled: sandbox Python calls `await call_tool(server, tool, body={...})`, only printed output reaches the context, and approval gates still apply.
 
 ## Bot and telemetry
 
@@ -33,3 +39,14 @@ Things that cost time today and must not cost time tomorrow.
 
 - v2 keeps the answer text correct (content_ok 100%) but renames `citations` to `kb_ids` and drops `escalate`: a silent regression a human skimming answers would miss.
 - gpt-4.1 is not slower than gpt-4.1-mini, so the route fault uses gpt-5 (a reasoning model; it rejects `temperature`).
+
+## Detector and gates (measured on real faults)
+
+- The prompt fault alarms on exactly the four quality signals (format valid z about -17, citations -17, eval -10, escalation -4.5); excluding `prompt_version=2` clears every alarm.
+- Two faults less than 5 minutes apart share the detector window: the route incident sees the prompt fault's quality alarms too.
+  Localisation separates them (`prompt_version=2` explains quality, `model=gpt-5` explains latency and cost), and gate 3 accepts alarms explained by a segment that is no longer live.
+  The plan's demo timing (route fault at 3:45, about 30 s after the prompt rollback) hits exactly this case.
+- A baseline eval score of about 1.0 has MAD 0; without a MAD floor every wobble would alarm.
+- Excluding the only segment in a window leaves no volume and would falsely "explain" every alarm; count an alarm as explained only when the exclusion run still has volume.
+- The narrative validator must reject leftover `{{...}}`, not only unknown ids, or a malformed placeholder slips through unrendered.
+- End-to-end on the prompt fault: onset 44 s after the change, replay gap 0.51 on 20 traces, all four gates passed, rollback applied once and a second call returned `already_applied`, recovery verified on fresh v1 traffic.
