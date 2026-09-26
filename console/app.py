@@ -7,6 +7,7 @@ the agent already asked for (here or from Slack, see console/decisions.py).
 """
 
 import json
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from console import decisions, trueforge
+from console import slack as slack_bridge
 from target import config_repo
 from regress_mcp import narrative
 from regress_mcp.detector import detect
@@ -37,7 +39,15 @@ from requests where ts >= now() - make_interval(mins => %(minutes)s)
 group by 1 order by 1
 """
 
-app = FastAPI(title="Regress console")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    slack_bridge.start(lambda incident_id, decision, reason, actor: decisions.apply_decision(
+        store(), tf_client, incident_id, decision, reason, actor))
+    yield
+    slack_bridge.stop()
+
+
+app = FastAPI(title="Regress console", lifespan=lifespan)
 state: dict = {}
 
 
@@ -68,6 +78,11 @@ def _gates(incident: dict) -> list[dict] | None:
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/slack")
+def slack_status() -> dict:
+    return {"status": slack_bridge.status()}
 
 
 @app.get("/api/signals")
