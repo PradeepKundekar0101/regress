@@ -6,9 +6,11 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
+    "imageio-ffmpeg>=0.6.0",
     "langfuse>=4.15.6",
     "mcp[cli]>=2.2.0",
     "openai>=3.19.2",
+    "playwright>=1.63.0",
     "posthog>=7.60.0",
     "psycopg-pool>=3.3.3",
     "psycopg[binary]>=3.3.6",

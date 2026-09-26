@@ -18,8 +18,8 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from regress_mcp import actions, detector, gates, localize as localize_mod, narrative, replay, slack, sources
-from regress_mcp.store import Store, TransitionError
+from regress_mcp import actions, customer_view, detector, gates, localize as localize_mod, narrative, replay, slack, sources
+from regress_mcp.store import Evidence, Store, TransitionError
 from target import config
 from target.prompts_registry import production_version
 
@@ -27,7 +27,8 @@ INSTRUCTIONS = """Investigate regressions in the Adopt.ai support bot.
 Every number you report must come from an evidence id returned by these tools; write it as {{ev_id}}.
 Flow: run_detector -> record_plan -> localize -> get_traces -> replay_generate -> (score in sandbox) ->
 submit_replay_report -> check_gates -> validate_narrative -> request_approval (Slack) -> rollback_execute or
-route_revert (needs human approval) -> verify_recovery -> post_update. NOT_LOCALIZED and INSUFFICIENT_DATA are valid endings."""
+route_revert (needs human approval) -> verify_recovery -> post_update. NOT_LOCALIZED and INSUFFICIENT_DATA are valid endings.
+capture_customer_view films the bot before approval (checkpointed) and after recovery (verified); it never blocks the flow."""
 
 READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
 ANALYSE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False)
@@ -399,6 +400,45 @@ def verify_recovery(incident_id: str) -> dict:
     """After apply: run the detector on fresh traffic served by the restored version. Replays never count."""
     with _db() as conn:
         return actions.verify_recovery(store, incident_id, conn)
+
+
+# --- customer view -----------------------------------------------------------------------
+
+CAPTURE_STATUS = {"before": "checkpointed", "after": "verified"}
+
+
+@tool(ANALYSE)
+def capture_customer_view(incident_id: str, phase: str) -> dict:
+    """Film the live bot answering the fraud question, as a customer sees it, and record what it showed.
+
+    phase "before": call after check_gates returned checkpointed, before the gated tool.
+    phase "after": call after verify_recovery returned verified.
+    Returns evidence ids for the specialist banner, the cited sources and the prompt version on screen.
+    Never changes the incident. On failure returns captured=false with a reason: say so in one line and go on.
+    """
+    if phase not in CAPTURE_STATUS:
+        raise ValueError(f"phase must be one of {sorted(CAPTURE_STATUS)}")
+    status = store.incident(incident_id)["status"]
+    if status != CAPTURE_STATUS[phase]:
+        raise ValueError(f"{incident_id} is {status}; the {phase} view is captured when it is {CAPTURE_STATUS[phase]}")
+    try:
+        seen = customer_view.capture(incident_id, phase)
+    except Exception as exc:  # The video is decoration, never a gate: any failure is reported, not raised.
+        return {"captured": False, "reason": f"{type(exc).__name__}: {str(exc)[:300]}"}
+    at = _now().isoformat(timespec="seconds")
+    source = {"kind": "video", "path": str(seen["video"]), "screenshot": str(seen["screenshot"]),
+              "url": seen["url"], "question": seen["question"], "prompt_version": seen["prompt_version"],
+              "model": seen["model"], "citations": seen["citations"], "footer": seen["footer"]}
+    by = "regress-mcp/customer_view"
+    evidence = store.add_evidence(incident_id, [
+        Evidence(f"customer view {phase}: specialist banner shown", float(seen["banner"]), "count", source, by, at, at),
+        Evidence(f"customer view {phase}: sources cited ({', '.join(seen['citations']) or 'none'})",
+                 float(len(seen["citations"])), "count", source, by, at, at),
+        Evidence(f"customer view {phase}: prompt version on screen", seen["prompt_version"], "version", source, by, at, at),
+    ])
+    return {"captured": True, "phase": phase, "video": str(seen["video"]), "screenshot": str(seen["screenshot"]),
+            "banner": seen["banner"], "citations": seen["citations"], "prompt_version": seen["prompt_version"],
+            "model": seen["model"], "evidence": _brief(evidence)}
 
 
 if __name__ == "__main__":
