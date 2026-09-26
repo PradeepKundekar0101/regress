@@ -356,7 +356,10 @@ def record_decision(incident_id: str, decision: str, reason: str) -> dict:
         raise ValueError("decision must be denied, not_localized or insufficient_data")
     verdict = {"not_localized": "NOT_LOCALIZED", "insufficient_data": "INSUFFICIENT_DATA"}.get(decision)
     fields = {"verdict": verdict} if verdict else {}
-    return store.transition(incident_id, decision, reason, [], **fields)
+    result = store.transition(incident_id, decision, reason, [], **fields)
+    if decision == "denied":
+        slack.settle_outside_decision(store, incident_id, "deny", reason)
+    return result
 
 
 @tool(NOTIFY)

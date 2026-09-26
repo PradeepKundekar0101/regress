@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import psycopg
 from langfuse import get_client
 
-from regress_mcp import sources
+from regress_mcp import slack, sources
 from regress_mcp.detector import MIN_VOLUME, SIGNAL_BY_NAME, detect
 from regress_mcp.store import Evidence, Store
 from target import config, config_repo
@@ -63,6 +63,7 @@ def rollback_prompt(store: Store, incident_id: str, prompt: str, label: str,
         return {"outcome": "already_applied", "incident": incident}
     if incident["status"] == "checkpointed":
         store.transition(incident_id, "approved", approval_reason(store, incident_id), [])
+        slack.settle_outside_decision(store, incident_id, "allow")
 
     langfuse = get_client()
     live = production_version(langfuse, prompt)
@@ -98,6 +99,7 @@ def revert_route(store: Store, incident_id: str, route: str, from_model: str, to
         return {"outcome": "already_applied", "incident": incident}
     if incident["status"] == "checkpointed":
         store.transition(incident_id, "approved", approval_reason(store, incident_id), [])
+        slack.settle_outside_decision(store, incident_id, "allow")
 
     with config.db_connect() as conn:
         live = conn.execute("select model from routes where name = %s for update", (route,)).fetchone()[0]

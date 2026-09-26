@@ -4,6 +4,7 @@ The buttons are built here from the incident's frozen proposal and carry only th
 can approve only what the store froze. The agent supplies prose, never Block Kit.
 """
 
+import logging
 import os
 from datetime import datetime, timezone
 
@@ -14,6 +15,8 @@ from regress_mcp.store import Store
 API = "https://slack.com/api/"
 APPROVE, REJECT, REJECT_VIEW = "regress_approve", "regress_reject", "regress_reject_reason"
 transport: httpx.BaseTransport | None = None  # tests swap in a MockTransport
+TRUEFORGE_ACTOR = "a human in TrueForge"
+log = logging.getLogger("regress.slack")
 
 
 class SlackError(RuntimeError):
@@ -149,3 +152,19 @@ def mark_decided(store: Store, incident_id: str, decision: str, actor: str, reas
     call("chat.update", channel=n["channel"], ts=n["ts"], text=line,
          blocks=approval_blocks(incident, n["summary"] or "", n["linear_url"], decided=line))
     return True
+
+
+def settle_outside_decision(store: Store, incident_id: str, decision: str, reason: str | None = None) -> bool:
+    """Show a decision made outside Slack and the console on the incident's Slack message.
+
+    TrueForge's own Allow/Deny (or agent/approve.py) never passes the console's decision path, so the message
+    would keep live buttons. Best-effort and never raises: the gated action or the denial has already happened.
+    """
+    n = store.notification(incident_id)
+    if not n or not n["ts"] or n["decided_by"]:
+        return False
+    try:
+        return mark_decided(store, incident_id, decision, TRUEFORGE_ACTOR, reason)
+    except Exception as exc:  # a stale Slack message must never fail a production action
+        log.warning("could not show the TrueForge decision for %s in Slack: %s", incident_id, exc)
+        return False

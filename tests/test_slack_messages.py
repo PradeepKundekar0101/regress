@@ -1,5 +1,6 @@
 """Slack messages are built from the store, never from agent-written Block Kit."""
 
+import httpx
 import pytest
 
 from regress_mcp import slack
@@ -135,3 +136,38 @@ def test_only_a_new_top_level_update_pings(checkpointed, slack_api):
     slack.post_update(store, inc, "Filed in Linear.")
     top, reply = slack_api.of("chat.postMessage")
     assert top["text"].startswith("<!here> ") and "<!here>" not in reply["text"]
+
+
+def test_a_decision_made_in_trueforge_replaces_the_buttons(checkpointed, slack_api):
+    store, inc = checkpointed
+    slack.request_approval(store, inc, "summary", None)
+    assert slack.settle_outside_decision(store, inc, "allow") is True
+    [upd] = slack_api.of("chat.update")
+    assert buttons(upd["blocks"]) == [] and "Approved* by a human in TrueForge" in text_of(upd["blocks"])
+
+
+def test_a_trueforge_denial_shows_its_reason(checkpointed, slack_api):
+    store, inc = checkpointed
+    slack.request_approval(store, inc, "summary", None)
+    slack.settle_outside_decision(store, inc, "deny", "not during peak")
+    [upd] = slack_api.of("chat.update")
+    assert "Rejected* by a human in TrueForge" in text_of(upd["blocks"]) and "not during peak" in text_of(upd["blocks"])
+
+
+def test_a_decision_from_slack_or_the_console_is_left_alone(checkpointed, slack_api):
+    store, inc = checkpointed
+    slack.request_approval(store, inc, "summary", None)
+    store.claim_decision(inc, "@ana", "call_1")
+    assert slack.settle_outside_decision(store, inc, "allow") is False
+    assert slack_api.of("chat.update") == []
+
+
+def test_settling_never_raises(checkpointed, slack_api, monkeypatch):
+    store, inc = checkpointed
+    assert slack.settle_outside_decision(store, inc, "allow") is False  # no message yet
+    slack.request_approval(store, inc, "summary", None)
+
+    def down(request):
+        raise httpx.ConnectError("slack is down")
+    monkeypatch.setattr(slack, "transport", httpx.MockTransport(down))
+    assert slack.settle_outside_decision(store, inc, "allow") is False
