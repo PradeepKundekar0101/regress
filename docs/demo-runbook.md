@@ -16,6 +16,7 @@ One terminal tab per process, all from the repo root:
 | 5 Traffic | `uv run python -m target.traffic` | a `batch ... eval=1.00` line every 1-2 min |
 | 6 Watcher | `WATCH_INTERVAL_SECONDS=20 uv run python -m agent.watcher` | `quiet (9 signals in band)` |
 | 7 Demo | free tab for the fault commands | |
+| 8 Awake | `caffeinate -dimsu` | the machine never sleeps (a sleep empties the detector baseline) |
 
 If you changed the skill or agent: `uv run python -m agent.bootstrap`.
 Leave traffic running: the detector needs 30 minutes of clean history, ideally 2 hours.
@@ -114,6 +115,7 @@ Wait until preflight is all PASS again before the next run.
 
 | Symptom | Fix |
 |---|---|
+| Watcher says `NO BASELINE` | The machine slept or traffic stopped: the detector has no 30 minutes of clean history. Keep traffic running and wait; nothing can be detected until then. |
 | Watcher stays `quiet` during the burst | Console header says "warming up": baseline too thin (too many recent faults); let clean traffic run 30 minutes. Otherwise check tab 6 for errors. |
 | Watcher says "not opening a duplicate" or "only from ... retired config" | An earlier incident or a revert explains the alarms; this is by design. Revert, wait for preflight to pass, retry. |
 | Allow in TrueForge does nothing | Approve from the console, or `uv run python -m agent.approve <session_id> allow`. |

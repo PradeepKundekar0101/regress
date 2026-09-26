@@ -45,7 +45,11 @@ def tool(annotations: ToolAnnotations):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             try:
-                return fn(*args, **kwargs)
+                try:
+                    return fn(*args, **kwargs)
+                except psycopg.OperationalError:
+                    # The Supabase pooler occasionally drops a connection; one retry on a fresh one.
+                    return fn(*args, **kwargs)
             except EXPECTED as exc:
                 raise ToolError(str(exc).strip("'\"")) from exc
         return mcp.tool(annotations=annotations)(wrapper)
@@ -53,7 +57,7 @@ def tool(annotations: ToolAnnotations):
 
 
 def _db() -> psycopg.Connection:
-    return config.db_connect()
+    return config.db_connect(autocommit=True)
 
 
 def _now() -> datetime:
@@ -151,7 +155,7 @@ def run_detector(window_minutes: int = 5, open_incident: bool = True) -> dict:
     with _db() as conn:
         result = detector.detect(conn, window_minutes=window_minutes, mask=store.incident_periods())
     store.add_evidence(None, result["evidence"])
-    summary = [{k: s[k] for k in ("signal", "current", "baseline_median", "z", "volume", "alarm", "evidence")}
+    summary = [{k: s[k] for k in ("signal", "current", "baseline_median", "z", "volume", "alarm", "baseline_ok", "evidence")}
                for s in result["signals"]]
     out = {"window": result["window"], "alarms": result["alarms"], "signals": summary}
     if result["alarms"] and open_incident:
@@ -305,7 +309,7 @@ def check_gates(incident_id: str, dimension: str, value: str) -> dict:
                                     mask=mask)
         mine = next((c for c in loc["candidates"] if c["dimension"] == dimension and str(c["value"]) == value), None)
         onset = detector.onset(conn, mine["explains"] if mine else incident["signal"].split(","),
-                               as_of=as_of, window_minutes=window, mask=mask)
+                               as_of=as_of, window_minutes=window, lookback_minutes=15, mask=mask)
         chg = sources.changes(conn, as_of - timedelta(minutes=60), _now())
         seg_total = conn.execute(
             f"select count(*) filter (where {dimension}::text = %s), count(*) from requests "

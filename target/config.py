@@ -48,9 +48,10 @@ def env(name: str, default: str | None = None) -> str:
 DB_KWARGS = {"prepare_threshold": None}
 
 
-def db_connect():
+def db_connect(autocommit: bool = False):
+    """autocommit=True for reads: no transaction stays open between queries to pin a pooler backend."""
     import psycopg
-    return psycopg.connect(env("DATABASE_URL"), **DB_KWARGS)
+    return psycopg.connect(env("DATABASE_URL"), autocommit=autocommit, connect_timeout=15, **DB_KWARGS)
 
 
 def db_pool(max_size: int):

@@ -5,6 +5,7 @@ Every function returns plain data plus the evidence that backs each number it re
 
 import os
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import httpx
 import psycopg
@@ -56,8 +57,9 @@ def window_stats(conn: psycopg.Connection, start: datetime, end: datetime, group
                           source, "regress-mcp/window_stats", _iso(start), _iso(end))
             evidence.append(ev)
             ids[metric] = ev.id
-        segments.append({**{k: (float(v) if isinstance(v, (int, float)) and k != "segment" else v) for k, v in row.items()},
-                         "evidence": ids})
+        # Postgres averages arrive as Decimal; everything downstream does float arithmetic.
+        segments.append({**{k: (float(v) if isinstance(v, (int, float, Decimal)) and k != "segment" else v)
+                            for k, v in row.items()}, "evidence": ids})
     return {"window": {"from": _iso(start), "to": _iso(end)}, "group_by": group_by,
             "segments": segments, "evidence": evidence}
 

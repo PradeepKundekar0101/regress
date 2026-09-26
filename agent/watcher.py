@@ -69,7 +69,11 @@ def tick(state: dict) -> None:
     det = anyio.run(detect)
     incident_id = det.get("incident_id")
     if not det["alarms"]:
-        log(f"quiet ({len(det['signals'])} signals in band)")
+        judged = [x for x in det["signals"] if x.get("baseline_ok", True)]
+        if not det["signals"] or len(judged) < len(det["signals"]):
+            log(f"NO BASELINE: only {len(judged)} of 9 signals have 30 min of clean history; faults cannot be detected yet")
+        else:
+            log(f"quiet ({len(judged)} signals in band)")
         return
     if det.get("suppressed_by"):
         log(f"alarms {det['alarms']}: {det['note']}")

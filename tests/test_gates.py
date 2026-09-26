@@ -88,3 +88,11 @@ def test_segment_that_explains_nothing_fails_gate_3():
                       onset="2026-09-25T16:04:00+00:00", changes=[change(3, "02:38", "route", "gpt-4.1-mini", "gpt-5")],
                       replay_check=REPLAY_ROUTE, live={"prompt_version": 2, "model": "gpt-5"})
     assert not result["gates"][2]["passed"]
+
+
+def test_recovery_effect_check_per_signal_kind():
+    from regress_mcp.actions import _within_effect
+    assert _within_effect("format_valid", 0.95, 1.0)            # 5 points off: back in band
+    assert not _within_effect("format_valid", 0.60, 1.0)        # 40 points off: still degraded
+    assert _within_effect("latency_p95_ms", 2900.0, 2600.0)     # 1.1x
+    assert not _within_effect("latency_p95_ms", 7000.0, 2600.0)  # 2.7x

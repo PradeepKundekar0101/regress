@@ -214,15 +214,15 @@ async function refreshSignals() {
     strip.append(el("div", { class: `tile${alarm ? " alarm" : ""}` },
       el("div", { class: "name" }, s.name, alarm ? el("span", {}, `z ${det.z}`) : null),
       el("div", { class: "val" }, det && det.current !== null ? s.fmt(det.current) : "–"),
-      el("div", { class: "base" }, !det ? "no data" : det.baseline_ok === false ? `warming up · ${det.baseline_buckets}/6 buckets` : `normal ${s.fmt(det.baseline_median)}`),
+      el("div", { class: "base" }, !det ? "warming up · no clean baseline yet" : det.baseline_ok === false ? `warming up · ${det.baseline_buckets}/6 buckets` : `normal ${s.fmt(det.baseline_median)}`),
       sparkline(pts, det)));
   }
   const alarms = data.detector.alarms;
-  const thin = Object.values(data.detector.signals).some((v) => v.baseline_ok === false);
+  const thin = !Object.keys(data.detector.signals).length || Object.values(data.detector.signals).some((v) => v.baseline_ok === false);
   $("live-text").textContent = alarms.length ? `alarm: ${alarms.join(", ")}`
     : thin ? "baseline warming up: the detector needs 30 min of clean history"
     : `all signals in band · ${time(new Date().toISOString())}`;
-  $("live-dot").classList.toggle("stale", thin);
+  $("live-dot").classList.toggle("stale", thin || alarms.length > 0);
 }
 
 async function refreshIncidents() {
