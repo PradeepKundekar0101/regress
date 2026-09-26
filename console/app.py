@@ -42,7 +42,7 @@ select date_trunc('minute', ts) as minute,
   avg(cost_usd) filter (where not provider_error) as cost_per_request_usd,
   mode() within group (order by prompt_version) as prompt_version,
   mode() within group (order by model) as model
-from requests where ts >= now() - make_interval(mins => %(minutes)s)
+from requests where ts >= now() - make_interval(mins => %(minutes)s) and source <> 'probe'
 group by 1 order by 1
 """
 

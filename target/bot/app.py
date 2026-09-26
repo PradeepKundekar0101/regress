@@ -54,7 +54,7 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 class ReplyRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     golden_id: str | None = None
-    source: str = Field(default="ui", pattern="^(ui|traffic)$")
+    source: str = Field(default="ui", pattern="^(ui|traffic|probe)$")
     session_id: str | None = None
 
 
@@ -62,7 +62,7 @@ class FeedbackRequest(BaseModel):
     trace_id: str
     kind: str = Field(pattern="^(thumbs_up|thumbs_down|talk_to_human)$")
     session_id: str | None = None
-    source: str = Field(default="ui", pattern="^(ui|traffic)$")
+    source: str = Field(default="ui", pattern="^(ui|traffic|probe)$")
 
 
 def current_model() -> str:

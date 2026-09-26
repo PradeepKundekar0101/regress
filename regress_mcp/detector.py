@@ -64,6 +64,8 @@ scoped as (
          (r.ts >= p.as_of - p.w) as is_current
   from requests r, params p
   where r.ts >= p.as_of - p.w - p.b and r.ts < p.as_of
+    -- Recorded customer-view probes are not customer traffic.
+    and r.source <> 'probe'
     -- Baseline masking: traffic from known incident periods is not "normal".
     and (r.ts >= p.as_of - p.w or not (r.ts <@ any(%(mask)s::tstzrange[])))
     {{exclude_clause}}

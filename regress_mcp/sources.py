@@ -29,7 +29,7 @@ select {group_expr} as segment,
   percentile_cont(0.95) within group (order by latency_ms) filter (where not provider_error) as latency_p95_ms,
   avg(cost_usd) filter (where not provider_error) as cost_per_request_usd
 from requests
-where ts >= %(from)s and ts < %(to)s
+where ts >= %(from)s and ts < %(to)s and source <> 'probe'
 group by 1 order by 1
 """
 GROUPABLE = {"prompt_version", "model", "category", "source"}
@@ -106,7 +106,7 @@ def traces(conn: psycopg.Connection, start: datetime, end: datetime, *, prompt_v
            model: str | None = None, category: str | None = None, golden_only: bool = True,
            limit: int = 50) -> dict:
     """Recent real requests: the inputs a replay re-executes. Newest first, one per golden question."""
-    filters, params = ["ts >= %(from)s", "ts < %(to)s", "not provider_error"], {"from": start, "to": end, "limit": limit}
+    filters, params = ["ts >= %(from)s", "ts < %(to)s", "not provider_error", "source <> 'probe'"], {"from": start, "to": end, "limit": limit}
     if golden_only:
         filters.append("golden_id is not null")
     for name, value in (("prompt_version", prompt_version), ("model", model), ("category", category)):

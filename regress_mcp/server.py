@@ -188,7 +188,7 @@ def _draining(window_minutes: int) -> dict | None:
     with _db() as conn:
         retired = conn.execute(
             """select count(*) from requests where ts >= now() - make_interval(mins => %s)
-               and (prompt_version <> %s or model <> %s)""",
+               and source <> 'probe' and (prompt_version <> %s or model <> %s)""",
             (window_minutes, live["prompt_version"], live["model"])).fetchone()[0]
         if not retired:
             return None
@@ -315,7 +315,7 @@ def check_gates(incident_id: str, dimension: str, value: str) -> dict:
         chg = sources.changes(conn, as_of - timedelta(minutes=60), _now())
         seg_total = conn.execute(
             f"select count(*) filter (where {dimension}::text = %s), count(*) from requests "
-            "where ts >= %s - make_interval(mins => %s) and ts < %s", (value, as_of, window, as_of)).fetchone()
+            "where ts >= %s - make_interval(mins => %s) and ts < %s and source <> 'probe'", (value, as_of, window, as_of)).fetchone()
     store.add_evidence(incident_id, loc["evidence"] + onset["evidence"] + chg["evidence"])
     replay_row = store.latest_verified_replay(incident_id)
     result = gates.evaluate(candidate=candidate, localization=loc, onset=onset["onset"], changes=chg["changes"],

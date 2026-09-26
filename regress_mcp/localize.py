@@ -20,7 +20,8 @@ CHANGE_DIMENSIONS = ("prompt_version", "model")
 def _segments(conn: psycopg.Connection, as_of: datetime, window_minutes: int) -> dict[str, list[str]]:
     sql = """select %(dim)s as dim, value from (
                select distinct {dim}::text as value from requests
-               where ts >= %(as_of)s::timestamptz - make_interval(mins => %(w)s) and ts < %(as_of)s) s"""
+               where ts >= %(as_of)s::timestamptz - make_interval(mins => %(w)s) and ts < %(as_of)s
+                 and source <> 'probe') s"""
     found = {}
     for dim in CHANGE_DIMENSIONS:
         rows = conn.cursor(row_factory=dict_row).execute(
@@ -45,7 +46,8 @@ def _shares(conn: psycopg.Connection, dim: str, as_of: datetime, window_minutes:
             "and not (ts <@ any(%(mask)s::tstzrange[]))") if baseline else \
            "ts >= %(as_of)s::timestamptz - make_interval(mins => %(w)s) and ts < %(as_of)s"
     rows = conn.execute(
-        f"select {dim}::text, count(*)::float / sum(count(*)) over () from requests where {span} group by 1",
+        f"select {dim}::text, count(*)::float / sum(count(*)) over () from requests "
+        f"where {span} and source <> 'probe' group by 1",
         {"as_of": as_of, "w": window_minutes, "mask": [Range(a, b) for a, b in (mask or [])]}).fetchall()
     return {value: share for value, share in rows}
 

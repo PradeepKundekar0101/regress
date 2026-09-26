@@ -242,7 +242,9 @@ const ICONS = {
   up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v11H4V10h3zm0 0 4-8a3 3 0 0 1 3 3v4h5.5a2 2 0 0 1 2 2.3l-1.4 8A2 2 0 0 1 18.1 21H7"/></svg>',
   down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V3h3v11h-3zm0 0-4 8a3 3 0 0 1-3-3v-4H4.5a2 2 0 0 1-2-2.3l1.4-8A2 2 0 0 1 5.9 3H17"/></svg>',
 };
-const sessionId = "ui-" + crypto.randomUUID().slice(0, 12);
+// ?probe=1 marks Regress's recorded customer-view probes, which the statistics exclude.
+const SOURCE = new URLSearchParams(location.search).get("probe") === "1" ? "probe" : "ui";
+const sessionId = SOURCE + "-" + crypto.randomUUID().slice(0, 12);
 const $ = (id) => document.getElementById(id);
 const thread = $("thread"), form = $("form"), input = $("q"), send = $("send");
 let kbTitles = {};
@@ -258,7 +260,7 @@ function scrollDown() { $("scroller").scrollTop = $("scroller").scrollHeight; }
 async function feedback(traceId, kind) {
   await fetch("/feedback", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ trace_id: traceId, kind, session_id: sessionId, source: "ui" }),
+    body: JSON.stringify({ trace_id: traceId, kind, session_id: sessionId, source: SOURCE }),
   });
 }
 
@@ -319,7 +321,7 @@ async function ask(question) {
   try {
     const resp = await fetch("/reply", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, source: "ui", session_id: sessionId }),
+      body: JSON.stringify({ question, source: SOURCE, session_id: sessionId }),
     });
     typing.remove();
     if (!resp.ok) throw new Error(`Ada could not answer (HTTP ${resp.status}). Try again in a moment.`);

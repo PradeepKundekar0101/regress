@@ -23,7 +23,7 @@ create table if not exists requests (
   id                  bigserial primary key,
   ts                  timestamptz not null default now(),
   trace_id            text not null,
-  source              text not null,          -- traffic | ui
+  source              text not null,          -- traffic | ui | probe
   session_id          text,
   golden_id           text references golden_set(id),
   category            text,
