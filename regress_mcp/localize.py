@@ -29,12 +29,17 @@ def _segments(conn: psycopg.Connection, as_of: datetime, window_minutes: int) ->
 
 
 COVERAGE_SHARE = 0.95
+NEW_SEGMENT_MAX_BASELINE_SHARE = 0.20
 
 
-def _shares(conn: psycopg.Connection, dim: str, as_of: datetime, window_minutes: int) -> dict[str, float]:
+def _shares(conn: psycopg.Connection, dim: str, as_of: datetime, window_minutes: int,
+            baseline: bool = False) -> dict[str, float]:
+    """Share of requests per segment value in the current window, or in the 2-hour baseline before it."""
+    span = ("ts >= %(as_of)s::timestamptz - make_interval(mins => %(w)s) - interval '120 minutes' "
+            "and ts < %(as_of)s::timestamptz - make_interval(mins => %(w)s)") if baseline else \
+           "ts >= %(as_of)s::timestamptz - make_interval(mins => %(w)s) and ts < %(as_of)s"
     rows = conn.execute(
-        f"""select {dim}::text, count(*)::float / sum(count(*)) over () from requests
-            where ts >= %(as_of)s::timestamptz - make_interval(mins => %(w)s) and ts < %(as_of)s group by 1""",
+        f"select {dim}::text, count(*)::float / sum(count(*)) over () from requests where {span} group by 1",
         {"as_of": as_of, "w": window_minutes}).fetchall()
     return {value: share for value, share in rows}
 
@@ -43,14 +48,18 @@ def localize(conn: psycopg.Connection, *, as_of: datetime, window_minutes: int, 
              mask: list[tuple[datetime, datetime]] | None = None) -> dict:
     """For each change segment present in the window, which of `alarms` vanish without it.
 
-    When one segment is essentially the whole window (a regression that has been live longer than the
-    window), there is nothing left to compare after excluding it; it then explains the alarms by
-    coverage, and the causal proof rests on the onset, replay and competing-change gates.
+    When excluding a segment leaves too little traffic to judge, a segment that is new relative to the
+    baseline explains the alarms by coverage (it is essentially the whole window) or by isolation (it
+    alarms on its own). A value that was already normal traffic never explains a new anomaly that way.
+    The causal proof then rests on the onset, replay and competing-change gates.
     """
     candidates, evidence = [], []
     for dim, values in _segments(conn, as_of, window_minutes).items():
         shares = _shares(conn, dim, as_of, window_minutes)
+        baseline_shares = _shares(conn, dim, as_of, window_minutes, baseline=True)
         for value in values:
+            # A value that was already normal traffic cannot explain a new anomaly by its mere presence.
+            is_new = baseline_shares.get(str(value), 0.0) < NEW_SEGMENT_MAX_BASELINE_SHARE
             run = detect(conn, as_of=as_of, window_minutes=window_minutes,
                          exclude={"dimension": dim, "value": value}, mask=mask)
             evidence += run["evidence"]
@@ -61,8 +70,21 @@ def localize(conn: psycopg.Connection, *, as_of: datetime, window_minutes: int, 
             inconclusive = [a for a in alarms if a not in judged]
             method = "exclusion"
             share = shares.get(str(value), 0.0)
-            if not explained and share >= COVERAGE_SHARE and inconclusive:
-                explained, inconclusive, method = inconclusive, [], "coverage"
+            if not explained and inconclusive and is_new:
+                if share >= COVERAGE_SHARE:
+                    # The new segment is the whole window: nothing is left to compare against.
+                    explained, inconclusive, method = inconclusive, [], "coverage"
+                else:
+                    # Too little traffic remains without it: test the complement, the new segment on its own.
+                    alone = detect(conn, as_of=as_of, window_minutes=window_minutes,
+                                   only={"dimension": dim, "value": value}, mask=mask)
+                    evidence += alone["evidence"]
+                    by_signal = {x["signal"]: x for x in alone["signals"]}
+                    isolated = [a for a in inconclusive if a in by_signal and by_signal[a]["alarm"]]
+                    if isolated:
+                        explained = isolated
+                        inconclusive = [a for a in inconclusive if a not in isolated]
+                        method = "isolation"
             if not explained:
                 continue
             share_ev = Evidence(f"share of window requests with {dim}={value}", round(share, 4), "ratio",
@@ -70,13 +92,14 @@ def localize(conn: psycopg.Connection, *, as_of: datetime, window_minutes: int, 
                                  "window_minutes": window_minutes, "dimension": dim}}, "regress-mcp/localize")
             evidence.append(share_ev)
             candidates.append({
-                "dimension": dim, "value": value, "explains": explained, "method": method,
+                "dimension": dim, "value": value, "explains": explained, "method": method, "new_segment": is_new,
                 "window_share": {"value": round(share, 4), "evidence": share_ev.id},
                 "still_alarming_without_it": [a for a in judged if rows[a]["alarm"]],
                 "inconclusive": inconclusive,
                 "z_after_exclusion": {a: {"z": rows[a]["z"], "evidence": rows[a]["evidence"]["z"]} for a in judged},
             })
-    candidates.sort(key=lambda c: (c["method"] != "exclusion", -len(c["explains"]), c["dimension"] != "prompt_version"))
+    candidates.sort(key=lambda c: (c["method"] != "exclusion", not c["new_segment"], -len(c["explains"]),
+                                   c["dimension"] != "prompt_version"))
     explained_any = {a for c in candidates for a in c["explains"]}
     return {
         "as_of": as_of.isoformat(timespec="seconds"), "window_minutes": window_minutes, "alarms": alarms,
