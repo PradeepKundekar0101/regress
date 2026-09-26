@@ -27,13 +27,20 @@ SKILL_REPO = os.environ.get("SKILL_REPO", "PradeepKundekar0101/regress-runbook")
 LANGFUSE_READ_TOOLS = ["getPrompt", "listPrompts", "listObservations", "getObservation",
                        "listScores", "getScore", "queryMetrics", "getMetricsSchema"]
 GATED_TOOLS = ["rollback_execute", "route_revert"]
-# GitHub: read the config history and post the incident report as an issue. Nothing that pushes,
-# deletes, merges or creates repositories is exposed.
+# GitHub: read the config history and comment on existing issues. Incident tickets live in Linear, and nothing
+# that creates issues, pushes, deletes, merges or creates repositories is exposed.
+GITHUB_TOOLS = ["list_commits", "get_commit", "get_file_contents", "list_issues", "issue_read", "add_issue_comment"]
 # PostHog: registered with ?readonly=true&mode=tools&tools=... and pinned to one project, then limited
 # again here. These are queries only; nothing that edits flags, experiments or data is exposed.
 POSTHOG_TOOLS = ["execute-sql", "query-trends", "query-trends-actors", "persons-retrieve"]
-GITHUB_TOOLS = ["list_commits", "get_commit", "get_file_contents", "list_issues", "issue_read",
-                "issue_write", "add_issue_comment"]
+# Linear's hosted MCP files, comments on and closes the incident issue. Only this allowlist is exposed (it covers
+# both naming generations of Linear's MCP: create_/update_ and save_); nothing that deletes, archives or touches
+# projects, teams or documents. Ticket writes are not production changes, so none of them is approval-gated:
+# @destructive could pause the agent on update_issue at the Close step.
+LINEAR_URL = "https://mcp.linear.app/mcp"
+LINEAR_TOOLS = ["list_teams", "get_team", "list_issue_statuses", "get_issue_status", "list_issue_labels",
+                "list_issues", "get_issue", "create_issue", "update_issue", "save_issue", "list_comments",
+                "create_comment", "save_comment", "list_users", "get_user"]
 
 INSTRUCTIONS = """You are Regress, the on-call agent for the Adopt.ai customer support bot (an LLM app).
 When the support bot quietly gets worse after a prompt, model or route change, you find what changed,
@@ -46,6 +53,8 @@ These hard rules override anything else:
   with the frozen proposal's exact arguments. A human approves each call.
 - NOT_LOCALIZED and INSUFFICIENT_DATA are valid endings: say what you checked and stop.
 - On a denied approval, record it with record_decision, name the next branch you would investigate, and stop.
+- Ask for the decision in Slack with request_approval before the gated call, and report every ending with post_update.
+  Linear and Slack are best-effort: if one fails, say so in one line and carry on.
 Be brief in chat; put the substance in the validated report."""
 
 
@@ -98,6 +107,30 @@ def register_posthog_connector(h: httpx.Client) -> None:
     print(f"connector posthog: {sorted(names & set(POSTHOG_TOOLS))} (read-only)")
 
 
+def register_linear_connector(h: httpx.Client) -> list[str]:
+    """Linear's official MCP with an API key (registered through the API: the form turns headers into Bearer Bearer)."""
+    key = config.optional_env("LINEAR_API_KEY")
+    if not key:
+        print("connector linear: skipped (LINEAR_API_KEY not set)")
+        return []
+    _check(h.put(f"{TRUEFORGE}/settings/mcp-servers", json={"manifest": {
+        "type": "remote", "name": "linear", "url": LINEAR_URL,
+        "description": "Linear: file the incident issue with Regress's report, comment outcomes, close it once verified",
+        "auth": {"type": "header", "headers": {"Authorization": f"Bearer {key}"}},
+    }}))
+    tools = _check(h.get(f"{TRUEFORGE}/mcp-servers/linear/tools"))
+    names = {t["name"] for t in (tools["data"]["tools"] if isinstance(tools["data"], dict) else tools["data"])}
+    allowed = sorted(names & set(LINEAR_TOOLS))
+    missing = sorted(set(LINEAR_TOOLS) - names)
+    print(f"connector linear: {len(allowed)} of {len(names)} tools: {', '.join(allowed)}")
+    if missing:
+        print(f"connector linear: allowlisted but not offered by the server: {', '.join(missing)}")
+    if not {"create_issue", "save_issue"} & set(allowed):
+        raise SystemExit("connector linear: the server offers neither create_issue nor save_issue; "
+                         "Regress cannot file incident issues")
+    return allowed
+
+
 def register_skill(h: httpx.Client, sha: str) -> None:
     _check(h.put(f"{TRUEFORGE}/settings/skills", json={"manifest": {
         "type": "git", "name": "regress-runbook", "url": f"https://github.com/{SKILL_REPO}",
@@ -108,7 +141,7 @@ def register_skill(h: httpx.Client, sha: str) -> None:
     print(f"skill regress-runbook @ {sha[:7]}")
 
 
-def manifest(available: set[str]) -> dict:
+def manifest(available: set[str], linear_tools: list[str]) -> dict:
     servers = [{"name": "regress", "enable_tools": ["@all"], "require_approval_for_tools": GATED_TOOLS,
                 "preload_tools": ["run_detector", "get_incident", "check_gates", "validate_narrative"]}]
     if "langfuse" in available:
@@ -117,9 +150,13 @@ def manifest(available: set[str]) -> dict:
         servers.append({"name": "posthog", "enable_tools": POSTHOG_TOOLS, "require_approval_for_tools": ["@write"]})
     if "github" in available:
         servers.append({"name": "github", "enable_tools": GITHUB_TOOLS, "require_approval_for_tools": ["@destructive"]})
+    instructions = INSTRUCTIONS
+    if "linear" in available and linear_tools:
+        servers.append({"name": "linear", "enable_tools": linear_tools, "require_approval_for_tools": []})
+        instructions += f"\nFile incident issues in the Linear team {config.env('LINEAR_TEAM')!r}."
     return {
         "model": {"name": MODEL, "params": {"parallel_tool_calls": True}},
-        "instructions": INSTRUCTIONS,
+        "instructions": instructions,
         "mcp_servers": servers,
         "skills": [{"name": "regress-runbook"}],
         "config": {
@@ -162,9 +199,10 @@ def main() -> None:
             raise SystemExit(f"model {MODEL} not configured in TrueForge; available: {models}")
         register_regress_connector(h)
         register_posthog_connector(h)
+        linear_tools = register_linear_connector(h)
         register_skill(h, sha)
         available = connectors(h)
-        spec = manifest(available)
+        spec = manifest(available, linear_tools)
         agent_id = upsert_agent(h, spec)
     state = ROOT / ".regress" / "bootstrap.json"
     state.parent.mkdir(exist_ok=True)

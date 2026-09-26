@@ -77,3 +77,57 @@ def test_incident_periods_can_leave_one_incident_out(store):
     assert len(store.incident_periods()) == 2
     starts = [p[0].isoformat() for p in store.incident_periods(exclude=a)]
     assert starts == ["2026-09-26T06:45:00+00:00"]
+
+
+def test_notification_round_trips_and_keeps_the_decision(store):
+    inc = store.open_incident("eval_score", [])
+    assert store.notification(inc) is None
+    store.save_notification(inc, "C1", "100.1", summary="prompt v2 dropped escalation", linear_url="https://linear.app/x/1")
+    assert store.claim_decision(inc, "@ana", "call_1") is None
+    store.save_notification(inc, "C1", "100.1")  # re-saving without prose keeps prose and decision
+    n = store.notification(inc)
+    assert (n["channel"], n["ts"], n["summary"], n["linear_url"], n["decided_by"]) == (
+        "C1", "100.1", "prompt v2 dropped escalation", "https://linear.app/x/1", "@ana")
+    assert n["decided_at"]
+
+
+def test_only_the_first_decision_is_claimed(store):
+    inc = store.open_incident("eval_score", [])
+    assert store.claim_decision(inc, "@ana", "call_1") is None
+    assert store.claim_decision(inc, "console", "call_1") == "@ana"
+    store.release_decision(inc)
+    assert store.notification(inc)["decided_call"] is None
+    assert store.claim_decision(inc, "console", "call_1") is None
+    assert store.notification(inc)["ts"] is None  # a console-only claim has no Slack message
+
+
+def test_a_lock_for_an_older_call_is_stale(store):
+    inc = store.open_incident("eval_score", [])
+    assert store.claim_decision(inc, "@ana", "call_a") is None
+    assert store.claim_decision(inc, "@bo", "call_b") is None  # re-issued call after resume: a new decision
+    n = store.notification(inc)
+    assert (n["decided_by"], n["decided_call"]) == ("@bo", "call_b")
+    assert store.claim_decision(inc, "console", "call_b") == "@bo"
+
+
+def test_second_claim_for_the_same_call_names_the_first_holder(store):
+    inc = store.open_incident("eval_score", [])
+    assert store.claim_decision(inc, "@ana", "call_a") is None
+    assert store.claim_decision(inc, "@bo", "call_a") == "@ana"
+    assert store.notification(inc)["decided_by"] == "@ana"
+
+
+def test_existing_database_gains_the_decided_call_column(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.sqlite"
+    conn = sqlite3.connect(path)
+    conn.executescript("""
+    create table notifications (incident_id text primary key, channel text, ts text, summary text,
+                                linear_url text, decided_by text, decided_at text);
+    insert into notifications (incident_id, decided_by) values ('inc_old', '@ana');
+    """)
+    conn.close()
+    store = Store(path)
+    Store(path)  # idempotent
+    assert store.notification("inc_old")["decided_call"] is None
+    assert store.claim_decision("inc_old", "@bo", "call_1") is None

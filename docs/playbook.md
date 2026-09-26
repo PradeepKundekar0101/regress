@@ -13,7 +13,9 @@ Read `docs/learnings.md` once before starting.
 - [ ] Daytona dashboard: old sandboxes deleted.
 - [ ] Langfuse connector registered through the API, not the form (the form turns `Basic` into `Bearer Basic`):
       `PUT /api/v1/settings/mcp-servers` with `Authorization: Basic base64(pk:sk)`.
-- [ ] GitHub connector added in TrueForge (catalog, fine-grained PAT with Issues read/write on the config repo).
+- [ ] GitHub connector added in TrueForge (catalog, fine-grained PAT with Contents read on the config repo; issues now live in Linear).
+- [ ] Linear API key and team in `.env`; `agent.bootstrap` registers the Linear MCP through the API (never the form).
+- [ ] Slack app from `docs/slack-app-manifest.yaml`, bot invited to the channel, three tokens in `.env`; the console header says "Slack connected".
 - [ ] `.env` filled, no quotes around values. `DATABASE_URL` uses the Supabase transaction pooler (port 6543). PostHog: project key `phc_` for capture, personal key `phx_` plus project id for reads.
 - [ ] Gateway credentials (10:30): set `OPENAI_BASE_URL` and the key in `.env` if using the TrueFoundry AI Gateway.
 

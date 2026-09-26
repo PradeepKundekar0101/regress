@@ -87,6 +87,31 @@ def _posthog():
     return "execute-sql" in names and not writable, f"{sorted(names)}; non-read-only: {writable or 'none'}"
 
 
+@check("Slack bot is in the approval channel")
+def _slack():
+    token, channel = os.environ.get("SLACK_BOT_TOKEN"), os.environ.get("SLACK_CHANNEL")
+    if not (token and channel and os.environ.get("SLACK_APP_TOKEN")):
+        return False, "set SLACK_BOT_TOKEN, SLACK_APP_TOKEN and SLACK_CHANNEL"
+    r = httpx.post("https://slack.com/api/conversations.info", data={"channel": channel},
+                   headers={"Authorization": f"Bearer {token}"}, timeout=10).json()
+    if not r.get("ok"):
+        return False, r.get("error")
+    return bool(r["channel"].get("is_member")), f"#{r['channel']['name']}, member {r['channel'].get('is_member')}"
+
+
+@check("console connected to Slack")
+def _console_slack():
+    s = httpx.get("http://localhost:8100/api/slack", timeout=10).json()["status"]
+    return s == "connected", s
+
+
+@check("TrueForge reaches Linear MCP")
+def _linear():
+    d = httpx.get(f"{TRUEFORGE}/mcp-servers/linear/tools", timeout=30).json()["data"]
+    names = [t["name"] for t in (d["tools"] if isinstance(d, dict) else d)]
+    return any("issue" in n for n in names), f"{len(names)} tools"
+
+
 @check("sandbox provider ready")
 def _sandbox():
     m = httpx.get(f"{TRUEFORGE}/settings/sandbox-providers", timeout=10).json()["data"]

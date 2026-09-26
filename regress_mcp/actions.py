@@ -39,6 +39,12 @@ def _check_proposal(store: Store, incident_id: str, action: str, args: dict) -> 
     return incident
 
 
+def approval_reason(store: Store, incident_id: str) -> str:
+    """The approved transition's reason: who decided, from Slack ("@ana") or the console, when recorded."""
+    decided_by = (store.notification(incident_id) or {}).get("decided_by")
+    return f"approved by {decided_by}" if decided_by else "approved by a human in TrueForge"
+
+
 def _log_change(conn, incident_id: str, kind: str, target: str, frm: str, to: str, sha: str | None) -> None:
     conn.execute(
         """insert into change_log (kind, target, from_value, to_value, actor, commit_sha, note)
@@ -56,7 +62,7 @@ def rollback_prompt(store: Store, incident_id: str, prompt: str, label: str,
     if incident["status"] in ("applied", "verified", "verify_failed"):
         return {"outcome": "already_applied", "incident": incident}
     if incident["status"] == "checkpointed":
-        store.transition(incident_id, "approved", "approved by a human in TrueForge", [])
+        store.transition(incident_id, "approved", approval_reason(store, incident_id), [])
 
     langfuse = get_client()
     live = production_version(langfuse, prompt)
@@ -91,7 +97,7 @@ def revert_route(store: Store, incident_id: str, route: str, from_model: str, to
     if incident["status"] in ("applied", "verified", "verify_failed"):
         return {"outcome": "already_applied", "incident": incident}
     if incident["status"] == "checkpointed":
-        store.transition(incident_id, "approved", "approved by a human in TrueForge", [])
+        store.transition(incident_id, "approved", approval_reason(store, incident_id), [])
 
     with config.db_connect() as conn:
         live = conn.execute("select model from routes where name = %s for update", (route,)).fetchone()[0]
