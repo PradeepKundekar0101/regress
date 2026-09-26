@@ -1,0 +1,24 @@
+- generic [ref=e2]:
+  - navigation "Main" [ref=e3]:
+    - generic [ref=e4]: regress
+    - generic [ref=e11]: On call for the Adopt.ai support bot
+    - generic [ref=e12]:
+      - link "Overview" [ref=e13] [cursor=pointer]:
+        - /url: "#overview"
+      - link "Incidents" [ref=e20] [cursor=pointer]:
+        - /url: "#incidents"
+      - link "Changes" [ref=e24] [cursor=pointer]:
+        - /url: "#changes"
+    - generic [ref=e31]:
+      - generic [ref=e32]: Alarms paused
+      - generic [ref=e35]: "Warming up: 15 of 30 min of normal traffic"
+  - generic [ref=e36]:
+    - banner [ref=e37]:
+      - heading "Incidents" [level=1] [ref=e38]
+      - generic [ref=e39]: Incident details
+      - generic [ref=e40]: Alarms paused
+      - button "Switch to dark mode" [ref=e43] [cursor=pointer]
+    - generic [ref=e47]:
+      - link "All incidents" [ref=e48] [cursor=pointer]:
+        - /url: "#incidents"
+      - region "Loading incident" [ref=e52]
