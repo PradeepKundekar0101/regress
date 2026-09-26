@@ -9,6 +9,7 @@ from datetime import datetime
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.range import Range
 
 from regress_mcp.detector import detect
 from regress_mcp.store import Evidence
@@ -33,14 +34,19 @@ NEW_SEGMENT_MAX_BASELINE_SHARE = 0.20
 
 
 def _shares(conn: psycopg.Connection, dim: str, as_of: datetime, window_minutes: int,
-            baseline: bool = False) -> dict[str, float]:
-    """Share of requests per segment value in the current window, or in the 2-hour baseline before it."""
+            baseline: bool = False, mask: list[tuple[datetime, datetime]] | None = None) -> dict[str, float]:
+    """Share of requests per segment value in the current window, or in the 2-hour baseline before it.
+
+    The baseline share uses the same incident mask as the detector: traffic from known incidents is not
+    what "normal" looked like.
+    """
     span = ("ts >= %(as_of)s::timestamptz - make_interval(mins => %(w)s) - interval '120 minutes' "
-            "and ts < %(as_of)s::timestamptz - make_interval(mins => %(w)s)") if baseline else \
+            "and ts < %(as_of)s::timestamptz - make_interval(mins => %(w)s) "
+            "and not (ts <@ any(%(mask)s::tstzrange[]))") if baseline else \
            "ts >= %(as_of)s::timestamptz - make_interval(mins => %(w)s) and ts < %(as_of)s"
     rows = conn.execute(
         f"select {dim}::text, count(*)::float / sum(count(*)) over () from requests where {span} group by 1",
-        {"as_of": as_of, "w": window_minutes}).fetchall()
+        {"as_of": as_of, "w": window_minutes, "mask": [Range(a, b) for a, b in (mask or [])]}).fetchall()
     return {value: share for value, share in rows}
 
 
@@ -56,7 +62,7 @@ def localize(conn: psycopg.Connection, *, as_of: datetime, window_minutes: int, 
     candidates, evidence = [], []
     for dim, values in _segments(conn, as_of, window_minutes).items():
         shares = _shares(conn, dim, as_of, window_minutes)
-        baseline_shares = _shares(conn, dim, as_of, window_minutes, baseline=True)
+        baseline_shares = _shares(conn, dim, as_of, window_minutes, baseline=True, mask=mask)
         for value in values:
             # A value that was already normal traffic cannot explain a new anomaly by its mere presence.
             is_new = baseline_shares.get(str(value), 0.0) < NEW_SEGMENT_MAX_BASELINE_SHARE
