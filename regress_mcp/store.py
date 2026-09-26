@@ -66,6 +66,15 @@ create table if not exists replays (
   outputs      text not null, -- JSON list of {trace_id, golden_id, arm, raw, latency_ms, tokens_in, tokens_out, error}
   verification text           -- JSON result of verify_report, once the agent's report is checked
 );
+create table if not exists notifications (
+  incident_id  text primary key references incidents(id),
+  channel      text,          -- Slack channel id of the incident's message
+  ts           text,          -- Slack ts of that message; replies thread under it
+  summary      text,          -- the agent's summary, kept so the message can be redrawn once decided
+  linear_url   text,
+  decided_by   text,          -- first decider: "@slack-user" or "console"; the lock against a second decision
+  decided_at   text
+);
 """
 
 
@@ -265,6 +274,45 @@ class Store:
                 "select id from replays where incident_id = ? and json_extract(verification, '$.verified') = 1 "
                 "order by created_at desc limit 1", (incident_id,)).fetchone()
         return self.replay(row["id"]) if row else None
+
+    # --- notifications and the one decision ---------------------------------------------
+
+    def notification(self, incident_id: str) -> dict | None:
+        with self._conn() as conn:
+            row = conn.execute("select * from notifications where incident_id = ?", (incident_id,)).fetchone()
+        return dict(row) if row else None
+
+    def save_notification(self, incident_id: str, channel: str, ts: str, summary: str | None = None,
+                          linear_url: str | None = None) -> None:
+        """Remember the incident's Slack message. A recorded decision, summary or Linear link is kept."""
+        with self._conn() as conn:
+            conn.execute(
+                "insert into notifications (incident_id, channel, ts, summary, linear_url) values (?, ?, ?, ?, ?) "
+                "on conflict(incident_id) do update set channel = excluded.channel, ts = excluded.ts, "
+                "summary = coalesce(excluded.summary, summary), linear_url = coalesce(excluded.linear_url, linear_url)",
+                (incident_id, channel, ts, summary, linear_url),
+            )
+
+    def claim_decision(self, incident_id: str, actor: str) -> str | None:
+        """Take the incident's one decision atomically. None if taken now, else who already holds it."""
+        with self._conn() as conn:
+            conn.execute("begin immediate")
+            conn.execute("insert or ignore into notifications (incident_id) values (?)", (incident_id,))
+            held = conn.execute("select decided_by from notifications where incident_id = ?",
+                                (incident_id,)).fetchone()["decided_by"]
+            if held:
+                conn.execute("rollback")
+                return held
+            conn.execute("update notifications set decided_by = ?, decided_at = ? where incident_id = ?",
+                          (actor, now_iso(), incident_id))
+            conn.execute("commit")
+        return None
+
+    def release_decision(self, incident_id: str) -> None:
+        """Undo a claim whose answer never reached TrueForge, so the decision can be made again."""
+        with self._conn() as conn:
+            conn.execute("update notifications set decided_by = null, decided_at = null where incident_id = ?",
+                         (incident_id,))
 
     @staticmethod
     def _incident_dict(row: sqlite3.Row) -> dict:

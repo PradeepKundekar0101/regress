@@ -77,3 +77,24 @@ def test_incident_periods_can_leave_one_incident_out(store):
     assert len(store.incident_periods()) == 2
     starts = [p[0].isoformat() for p in store.incident_periods(exclude=a)]
     assert starts == ["2026-09-26T06:45:00+00:00"]
+
+
+def test_notification_round_trips_and_keeps_the_decision(store):
+    inc = store.open_incident("eval_score", [])
+    assert store.notification(inc) is None
+    store.save_notification(inc, "C1", "100.1", summary="prompt v2 dropped escalation", linear_url="https://linear.app/x/1")
+    assert store.claim_decision(inc, "@ana") is None
+    store.save_notification(inc, "C1", "100.1")  # re-saving without prose keeps prose and decision
+    n = store.notification(inc)
+    assert (n["channel"], n["ts"], n["summary"], n["linear_url"], n["decided_by"]) == (
+        "C1", "100.1", "prompt v2 dropped escalation", "https://linear.app/x/1", "@ana")
+    assert n["decided_at"]
+
+
+def test_only_the_first_decision_is_claimed(store):
+    inc = store.open_incident("eval_score", [])
+    assert store.claim_decision(inc, "@ana") is None
+    assert store.claim_decision(inc, "console") == "@ana"
+    store.release_decision(inc)
+    assert store.claim_decision(inc, "console") is None
+    assert store.notification(inc)["ts"] is None  # a console-only claim has no Slack message
