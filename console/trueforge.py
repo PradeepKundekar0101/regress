@@ -21,6 +21,9 @@ def client(transport: httpx.BaseTransport | None = None) -> httpx.Client:
     return httpx.Client(base_url=f"{base_url()}/api/v1", headers=headers, timeout=20, transport=transport)
 
 
+SESSION_PAGE_SIZE, SESSION_PAGES = 25, 4
+
+
 def session_for(incident_id: str, h: httpx.Client) -> str | None:
     try:
         mapped = json.loads(WATCHER_STATE.read_text()).get("sessions", {})
@@ -28,10 +31,17 @@ def session_for(incident_id: str, h: httpx.Client) -> str | None:
         mapped = {}
     if incident_id in mapped:
         return mapped[incident_id]
-    sessions = h.get("/sessions", params={"limit": 100}).raise_for_status().json().get("data", [])
-    for s in sessions:
-        if (s.get("metadata") or {}).get("incident_id") == incident_id:
-            return s["id"]
+    # TrueForge pages sessions 25 at a time (a larger limit is a 400); look through the newest 100.
+    token = None
+    for _ in range(SESSION_PAGES):
+        params = {"limit": SESSION_PAGE_SIZE} | ({"page_token": token} if token else {})
+        page = h.get("/sessions", params=params).raise_for_status().json()
+        for s in page.get("data", []):
+            if (s.get("metadata") or {}).get("incident_id") == incident_id:
+                return s["id"]
+        token = (page.get("pagination") or {}).get("next_page_token")
+        if not token:
+            break
     return None
 
 
