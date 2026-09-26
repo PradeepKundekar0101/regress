@@ -28,7 +28,7 @@ Do not trip faults in the last 2 hours except full rehearsals that open incident
 uv run python -m agent.preflight
 ```
 
-All ten lines must say PASS: bot answers, production on baseline, detector warm and quiet, no open incident, TrueForge has the model and agent, TrueForge reaches regress-mcp, TrueForge reaches PostHog MCP read-only, sandbox ready, console up, traffic flowing.
+All thirteen lines must say PASS: bot answers, production on baseline, detector warm and quiet, no open incident, TrueForge has the model and agent, TrueForge reaches regress-mcp, TrueForge reaches PostHog MCP read-only, sandbox ready, console up, traffic flowing, Slack bot in the channel, console connected to Slack, TrueForge reaches Linear.
 Also check by hand: OpenAI credits, and the Daytona dashboard has no pile of old sandboxes.
 
 ## 3. Open these windows, left to right
@@ -36,7 +36,7 @@ Also check by hand: OpenAI credits, and the Daytona dashboard has no pile of old
 1. **Bot UI** http://localhost:8000 (the customer's view).
 2. **Console** http://localhost:8100 (your main screen).
 3. **TrueForge** http://localhost:8790 > Sessions (the agent at work).
-4. **GitHub** https://github.com/PradeepKundekar0101/adopt-support-bot commits and issues.
+4. **Slack** the approval channel, and **Linear** the team's issue list (GitHub commits stay one tab over).
 5. **Terminal**: tab 6 (watcher) visible, tab 7 ready.
 
 ## 4. The demo (about 6 minutes)
@@ -65,7 +65,7 @@ See (tab 6): `ALARM [citation_correct, escalation_correct, eval_score, format_va
 See (console): tiles turn orange with z-scores; the new incident appears at the top.
 Do: open the session link in TrueForge.
 See: the runbook loads, four subagents start in parallel (what-changed, segments, impact, replay), a Daytona sandbox runs the replay harness.
-Say: "Detection is arithmetic, not an LLM opinion: robust z-scores in SQL against a clean baseline. The agent then fans out four subagents and writes and runs replay code in a sandbox. It reaches four real systems over MCP: our regress server over Supabase telemetry, PostHog's own MCP for customer impact, Langfuse for prompts and traces, and GitHub for the change history and the report."
+Say: "Detection is arithmetic, not an LLM opinion: robust z-scores in SQL against a clean baseline. The agent then fans out four subagents and writes and runs replay code in a sandbox. It reaches four real systems over MCP: our regress server over Supabase telemetry, PostHog's own MCP for customer impact, Langfuse for prompts and traces, GitHub for the change history, and Linear and Slack for the ticket and the human decision."
 Point at (TrueForge session, impact subagent): its `posthog` `execute-sql` call counting thumbs-down and talk-to-human events, and its cross-check that PostHog agrees with Regress's numbers.
 
 ### 2:30 The evidence and the question (alarm to approval card: about 2-3 minutes)
@@ -77,12 +77,13 @@ Say: "Every number is an evidence object with the query behind it; the narrator 
 
 ### 3:15 Approve
 
-Do: click **Approve rollback** in the console (or Allow in TrueForge).
+Do: click **Approve** in Slack (confirm the dialog); the console and TrueForge still work.
 Then immediately (tab 7), to give verification fresh traffic:
 ```bash
 uv run python -m target.traffic --burst 30
 ```
-See: timeline `approved → applied`; GitHub shows a new commit `Regress rollback (inc_...): adopt-support v2 -> v1`; within about a minute `verified`; a GitHub issue with the report.
+See: timeline `approved → applied`; GitHub shows a new commit `Regress rollback (inc_...): adopt-support v2 -> v1`; within about a minute `verified`; the Linear issue with the report.
+See: the Slack message turns into "Approved by @you"; after verification a thread reply with before/after numbers and the Linear issue moves to Done.
 Do: ask the fraud question in the bot UI: the specialist header is back, footer `prompt v1`.
 Say: "Recovery is verified on fresh production traffic, never on the replay. If the harness dies between approval and apply, it reads the live label on restart and never flips twice; we killed it with kill -9 in rehearsal."
 
@@ -93,8 +94,8 @@ Do (tab 7):
 ./scripts/fault_route.sh && sleep 7 && uv run python -m target.traffic --burst 40
 ```
 See: burst p50 about 5 s or more (gpt-5), quality 1.00. Watcher alarms on `cost_per_request_usd` and `latency_p95_ms`, quality flat. About 3 minutes later the decision card shows `route support gpt-5 → gpt-4.1-mini`, verdict `LOCALIZED_ROUTE`, replay latency ratio about 2.5x.
-Do: **Deny…**, type "we chose the bigger model on purpose; take it to capacity review", then **Deny and record**.
-See: timeline `denied`; the agent's closing message names its next branch and stops; nothing changes.
+Do: **Reject** in Slack, type "we chose the bigger model on purpose; take it to capacity review" in the dialog, submit.
+See: the message shows "Rejected by @you: we chose the bigger model on purpose; take it to capacity review", a thread reply names the next branch, the Linear issue stays open with the comment.
 Say: "Different fault, different evidence, different fix. And 'no' is a first-class answer: it records the decision and stops."
 
 ### 5:30 Close
