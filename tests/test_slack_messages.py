@@ -102,3 +102,36 @@ def test_not_configured_is_a_clear_refusal(checkpointed):
     store, inc = checkpointed
     with pytest.raises(ValueError, match="not configured"):
         slack.request_approval(store, inc, "summary", None)
+
+
+def test_approval_request_pings_here_when_no_approvers_are_listed(checkpointed, slack_api):
+    store, inc = checkpointed
+    slack.request_approval(store, inc, "summary", None)
+    [msg] = slack_api.of("chat.postMessage")
+    assert msg["text"].startswith("<!here> ")
+    assert "<!here>" in msg["blocks"][0]["elements"][0]["text"]
+
+
+def test_approval_request_pings_the_listed_approvers(checkpointed, slack_api, monkeypatch):
+    store, inc = checkpointed
+    monkeypatch.setenv("SLACK_APPROVERS", "U1, U2")
+    slack.request_approval(store, inc, "summary", None)
+    [msg] = slack_api.of("chat.postMessage")
+    assert msg["text"].startswith("<@U1> <@U2> ") and "<!here>" not in msg["text"]
+
+
+def test_a_re_ask_after_a_decision_pings_in_the_thread(checkpointed, slack_api):
+    store, inc = checkpointed
+    first = slack.request_approval(store, inc, "summary", None)
+    store.claim_decision(inc, "@ana", "call_0")
+    slack.request_approval(store, inc, "summary", None)
+    ping = slack_api.of("chat.postMessage")[-1]
+    assert ping["thread_ts"] == first["ts"] and ping["text"].startswith("<!here> ")
+
+
+def test_only_a_new_top_level_update_pings(checkpointed, slack_api):
+    store, inc = checkpointed
+    slack.post_update(store, inc, "NOT_LOCALIZED: nothing to roll back.")
+    slack.post_update(store, inc, "Filed in Linear.")
+    top, reply = slack_api.of("chat.postMessage")
+    assert top["text"].startswith("<!here> ") and "<!here>" not in reply["text"]

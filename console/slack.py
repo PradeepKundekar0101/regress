@@ -31,7 +31,7 @@ def _tell(channel: str, user_id: str, text: str) -> None:
 
 
 def _allowed(channel: str, user: dict) -> bool:
-    approvers = {u.strip() for u in os.environ.get("SLACK_APPROVERS", "").split(",") if u.strip()}
+    approvers = slack.approvers()
     if approvers and user["id"] not in approvers:
         _tell(channel, user["id"], "You are not on the approver list for Regress (SLACK_APPROVERS).")
         return False

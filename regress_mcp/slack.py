@@ -36,6 +36,19 @@ def call(method: str, **payload) -> dict:
     return body
 
 
+def approvers() -> list[str]:
+    """Slack user ids allowed to decide (SLACK_APPROVERS, comma-separated); empty means anyone in the channel."""
+    return [u.strip() for u in os.environ.get("SLACK_APPROVERS", "").split(",") if u.strip()]
+
+
+def mention() -> str:
+    """Who a new incident message pings: the approvers, else everyone active in the channel.
+
+    Slack only notifies for mentions, so a message without one lands silently.
+    """
+    return " ".join(f"<@{u}>" for u in approvers()) or "<!here>"
+
+
 def _require(text: str) -> None:
     if not configured():
         raise ValueError("Slack is not configured (SLACK_BOT_TOKEN, SLACK_CHANNEL); the console can still approve")
@@ -99,8 +112,12 @@ def request_approval(store: Store, incident_id: str, summary: str, linear_url: s
     if existing and existing["ts"]:
         call("chat.update", channel=existing["channel"], ts=existing["ts"], text=text, blocks=blocks)
         channel, ts, updated = existing["channel"], existing["ts"], True
+        if existing["decided_by"]:  # an edit does not notify, so ping in the thread
+            call("chat.postMessage", channel=channel, thread_ts=ts, text=f"{mention()} {text} again")
     else:
-        posted = call("chat.postMessage", channel=os.environ["SLACK_CHANNEL"], text=text, blocks=blocks)
+        ping = [{"type": "context", "elements": [{"type": "mrkdwn", "text": mention()}]}]
+        posted = call("chat.postMessage", channel=os.environ["SLACK_CHANNEL"], text=f"{mention()} {text}",
+                      blocks=ping + blocks)
         channel, ts, updated = posted["channel"], posted["ts"], False
     store.save_notification(incident_id, channel, ts, summary=summary, linear_url=linear_url)
     return {"channel": channel, "ts": ts, "updated": updated}
@@ -113,7 +130,7 @@ def post_update(store: Store, incident_id: str, text: str) -> dict:
     if existing and existing["ts"]:
         posted = call("chat.postMessage", channel=existing["channel"], thread_ts=existing["ts"], text=text)
         return {"channel": existing["channel"], "ts": posted["ts"], "thread_ts": existing["ts"]}
-    posted = call("chat.postMessage", channel=os.environ["SLACK_CHANNEL"], text=f"*Regress {incident_id}*\n{text}")
+    posted = call("chat.postMessage", channel=os.environ["SLACK_CHANNEL"], text=f"{mention()} *Regress {incident_id}*\n{text}")
     store.save_notification(incident_id, posted["channel"], posted["ts"])
     return {"channel": posted["channel"], "ts": posted["ts"], "thread_ts": None}
 
