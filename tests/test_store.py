@@ -69,3 +69,11 @@ def test_last_unresolved_close_ignores_verified_incidents(store):
     unfixed = store.open_incident("eval_score", [])
     store.transition(unfixed, "not_localized", "gates failed", [])
     assert store.last_unresolved_close()["id"] == unfixed
+
+
+def test_incident_periods_can_leave_one_incident_out(store):
+    a = store.open_incident("eval_score", [], "2026-09-26T06:00:00+00:00", 5)
+    b = store.open_incident("eval_score", [], "2026-09-26T07:00:00+00:00", 5)
+    assert len(store.incident_periods()) == 2
+    starts = [p[0].isoformat() for p in store.incident_periods(exclude=a)]
+    assert starts == ["2026-09-26T06:45:00+00:00"]

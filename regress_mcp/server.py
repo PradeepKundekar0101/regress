@@ -229,7 +229,8 @@ def localize(incident_id: str) -> dict:
     as_of = datetime.fromisoformat(incident["detected_as_of"])
     with _db() as conn:
         result = localize_mod.localize(conn, as_of=as_of, window_minutes=incident["window_minutes"],
-                                       alarms=incident["signal"].split(","), mask=store.incident_periods())
+                                       alarms=incident["signal"].split(","),
+                                       mask=store.incident_periods(exclude=incident_id))
         by_category = sources.window_stats(conn, as_of - timedelta(minutes=incident["window_minutes"]), as_of, "category")
     store.add_evidence(incident_id, result["evidence"] + by_category["evidence"])
     worst = sorted((s for s in by_category["segments"] if s.get("eval_score") is not None),
@@ -304,7 +305,7 @@ def check_gates(incident_id: str, dimension: str, value: str) -> dict:
     candidate = {"dimension": dimension, "value": value}
     as_of, window = datetime.fromisoformat(incident["detected_as_of"]), incident["window_minutes"]
     with _db() as conn:
-        mask = store.incident_periods()
+        mask = store.incident_periods(exclude=incident_id)
         loc = localize_mod.localize(conn, as_of=as_of, window_minutes=window, alarms=incident["signal"].split(","),
                                     mask=mask)
         mine = next((c for c in loc["candidates"] if c["dimension"] == dimension and str(c["value"]) == value), None)

@@ -173,18 +173,20 @@ class Store:
                    group by i.id order by closed_at desc limit 1""").fetchone()
         return dict(row) if row else None
 
-    def incident_periods(self, lead_minutes: int = 10, tail_minutes: int = 3) -> list[tuple[datetime, datetime]]:
+    def incident_periods(self, lead_minutes: int = 10, tail_minutes: int = 3,
+                         exclude: str | None = None) -> list[tuple[datetime, datetime]]:
         """Periods of known incidents, to keep their traffic out of detector baselines.
 
         From `lead_minutes` before the alarming window (the regression began before it was detected) to
         `tail_minutes` after the incident's last transition (prompt caches drain after a rollback);
-        open incidents run to now.
+        open incidents run to now. `exclude` leaves one incident out: re-evaluating an incident must see
+        the baseline its detector saw, not one with its own period removed.
         """
         with self._conn() as conn:
             rows = conn.execute(
                 """select i.detected_as_of, i.window_minutes, i.status, max(t.ts) as last_ts
                    from incidents i join transitions t on t.incident_id = i.id
-                   where i.detected_as_of is not null group by i.id""").fetchall()
+                   where i.detected_as_of is not null and i.id is not ? group by i.id""", (exclude,)).fetchall()
         now = datetime.now(timezone.utc)
         periods = []
         for r in rows:
