@@ -36,7 +36,7 @@ Also check by hand: OpenAI credits, and the Daytona dashboard has no pile of old
 1. **Bot UI** http://localhost:8000 (the customer's view).
 2. **Console** http://localhost:8100 (your main screen).
 3. **TrueForge** http://localhost:8790 > Sessions (the agent at work).
-4. **GitHub** https://github.com/PradeepKundekar0101/regress-config commits and issues.
+4. **GitHub** https://github.com/PradeepKundekar0101/adopt-support-bot commits and issues.
 5. **Terminal**: tab 6 (watcher) visible, tab 7 ready.
 
 ## 4. The demo (about 6 minutes)

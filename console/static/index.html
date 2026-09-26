@@ -109,6 +109,16 @@
   .report strong { font-weight: 600; }
   .closing { padding: 0 16px 14px; font-size: 13px; color: var(--muted); white-space: pre-wrap; }
 
+  .diff { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+  .diff .dhead { display: flex; justify-content: space-between; gap: 10px; padding: 7px 12px; font-size: 12.5px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+  .diff .dhead .stat { font-family: var(--mono); white-space: nowrap; }
+  .diff .dhead .add { color: var(--ok); } .diff .dhead .del { color: var(--alarm); }
+  .diff pre { margin: 0; padding: 6px 0; font: 400 12px/1.55 var(--mono); overflow-x: auto; max-height: 360px; overflow-y: auto; }
+  .diff pre span { display: block; padding: 0 12px; white-space: pre; }
+  .diff .l-add { background: var(--ok-tint); color: var(--ok); }
+  .diff .l-del { background: var(--alarm-tint); color: var(--alarm); }
+  .diff .l-hunk { color: var(--muted); }
+  .diff .l-ctx { color: var(--muted); }
   details.group { border-top: 1px solid var(--line); }
   details.group:first-of-type { border-top: 0; }
   details.group summary { padding: 9px 16px; cursor: pointer; font-size: 13px; display: flex; justify-content: space-between; }
@@ -259,6 +269,29 @@ function renderReport(text) {
   return box;
 }
 
+const diffCache = {};
+function diffView(sha, title) {
+  const box = el("div", { class: "diff" }, el("div", { class: "dhead" }, el("span", {}, `${title} · loading diff…`)));
+  const render = (c) => {
+    box.replaceChildren();
+    const files = c.files.filter((f) => f.path.endsWith(".md")).concat(c.files.filter((f) => !f.path.endsWith(".md")));
+    for (const f of files) {
+      const pre = el("pre", {});
+      for (const line of (f.patch || "").split("\n")) {
+        const cls = line.startsWith("@@") ? "l-hunk" : line.startsWith("+") ? "l-add" : line.startsWith("-") ? "l-del" : "l-ctx";
+        pre.append(el("span", { class: cls }, line || " "));
+      }
+      box.append(el("div", { class: "dhead" },
+        el("span", {}, `${title} · `, el("a", { href: c.url, target: "_blank", rel: "noopener" }, c.message.split("\n")[0]), ` · ${f.path}`),
+        el("span", { class: "stat" }, el("span", { class: "add" }, `+${f.additions}`), " ", el("span", { class: "del" }, `−${f.deletions}`))), pre);
+    }
+  };
+  if (diffCache[sha]) render(diffCache[sha]);
+  else getJSON(`/api/commits/${sha}`).then((c) => { diffCache[sha] = c; render(c); })
+    .catch((e) => box.replaceChildren(el("div", { class: "dhead" }, `${title}: diff unavailable (${e.message})`)));
+  return box;
+}
+
 function decisionCard(d) {
   const p = d.proposal, pending = d.session && d.session.pending && d.session.pending[0];
   const change = p.action === "rollback_execute"
@@ -293,7 +326,8 @@ function decisionCard(d) {
       el("dt", {}, "Blast radius"), el("dd", {}, `${blast.scope || ""}${blast.requests_in_window ? ` · ${blast.affected_requests_in_window} of ${blast.requests_in_window} requests in the incident window` : ""}`),
       el("dt", {}, "Undo"), el("dd", {}, p.undo),
       p.change_commit && p.change_commit.message ? [el("dt", {}, "Caused by"), el("dd", {}, p.change_commit.url ? el("a", { href: p.change_commit.url, target: "_blank", rel: "noopener" }, p.change_commit.message) : p.change_commit.message)] : null),
-    el("div", { class: "actions" }, allow, denyOpen, denyBox), msg);
+    el("div", { class: "actions" }, allow, denyOpen, denyBox), msg,
+    p.change_commit && p.change_commit.sha ? diffView(p.change_commit.sha, "What changed") : null);
 }
 
 function decidedCard(d, t) {
@@ -304,7 +338,8 @@ function decidedCard(d, t) {
   return el("section", { class: "decision done", "aria-label": "Decision" },
     el("div", { class: "label" }, t.to_status === "approved" ? `Approved at ${time(t.ts)}` : `Denied at ${time(t.ts)}`),
     el("div", { class: "change" }, change),
-    el("div", { class: "msg" }, t.to_status === "denied" && t.reason ? `${t.reason} · ${next}` : next));
+    el("div", { class: "msg" }, t.to_status === "denied" && t.reason ? `${t.reason} · ${next}` : next),
+    ...(d.actions || []).filter((a) => a.sha).map((a) => diffView(a.sha, "Regress's fix")));
 }
 
 function evidencePanel(d) {

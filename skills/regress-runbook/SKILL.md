@@ -43,11 +43,11 @@ Reads and replays are free. Exactly one production write exists per incident, an
 ```
 Verdict: <LOCALIZED_PROMPT | LOCALIZED_ROUTE | NOT_LOCALIZED | INSUFFICIENT_DATA>
 What happened: <signals that moved, with {{ev}} current vs baseline>
-Cause: <the change: kind, from -> to, commit message, when>
+Cause: <the commit in the chatbot's repo: message, link, when, and what its diff removed>
 Proof: replay of the same inputs, baseline {{ev}} vs suspect {{ev}}; gates 1-4 with one line each
 Customer impact: <thumbs-down / talk-to-human counts {{ev}}, worst categories>
 Ruled out: <each other candidate with its number, e.g. route unchanged, latency p95 {{ev}} vs {{ev}}>
-Action: <the proposal: exact change, blast radius, how to undo>
+Action: <the proposal: exact change, blast radius, how to undo; after apply, link Regress's fix commit, whose diff restores the removed text>
 ```
 
 ## Restart and resume

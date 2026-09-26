@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from console import trueforge
+from target import config_repo
 from regress_mcp import narrative
 from regress_mcp.detector import detect
 from regress_mcp.store import Store
@@ -117,7 +118,7 @@ def incident(incident_id: str) -> dict:
         **inc,
         "gates": _gates(inc),
         "session": session,
-        "actions": [{"ts": c[0].isoformat(), "kind": c[1], "from": c[2], "to": c[3], "actor": c[4],
+        "actions": [{"ts": c[0].isoformat(), "kind": c[1], "from": c[2], "to": c[3], "actor": c[4], "sha": c[5],
                      "commit_url": f"https://github.com/{repo}/commit/{c[5]}" if repo and c[5] else None}
                     for c in commits],
         "evidence": [{"id": e["id"], "label": e["label"], "value": narrative.fmt(e), "kind": e["source"].get("kind"),
@@ -145,6 +146,23 @@ def changes(minutes: int = 180) -> list[dict]:
             "where ts >= now() - make_interval(mins => %s) order by ts desc limit 30", (minutes,)).fetchall()
     return [{"ts": r[0].isoformat(), "kind": r[1], "target": r[2], "from": r[3], "to": r[4], "actor": r[5],
              "commit_url": f"https://github.com/{repo}/commit/{r[6]}" if repo and r[6] else None} for r in rows]
+
+
+_DIFFS: dict[str, dict] = {}
+
+
+@app.get("/api/commits/{sha}")
+def commit(sha: str) -> dict:
+    """A commit's message and per-file patches from the chatbot's repo (immutable, so cached)."""
+    if sha not in _DIFFS:
+        try:
+            diff = config_repo.commit_diff(sha)
+        except httpx.HTTPError as exc:
+            raise HTTPException(502, f"GitHub unavailable: {exc}")
+        if diff is None:
+            raise HTTPException(404, "CONFIG_REPO is not set")
+        _DIFFS[sha] = diff
+    return _DIFFS[sha]
 
 
 class Decision(BaseModel):

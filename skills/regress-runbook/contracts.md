@@ -20,13 +20,14 @@ Common shape:
 
 ## what_changed
 
-Tools: `regress.get_changes`, `regress.get_prompt`, `regress.get_route`.
-Find every prompt label move and route change in the last 60 minutes with its commit message, and diff the suspect prompt version against the previous one.
+Tools: `regress.get_changes`, `regress.get_prompt`, `regress.get_route`, and the `github` connector (`get_commit`).
+Find every prompt and route change in the last 60 minutes. Each one is a commit in the chatbot's repository (`adopt-support-bot`): read the suspect commit with `github.get_commit` and summarise its diff of `prompts/adopt-support.md` (which instruction blocks were removed or reworded, quoted briefly).
 
 ```json
 "findings": {
   "changes": [{"change_id": 0, "ts": "", "kind": "prompt|route", "from": "", "to": "", "commit_message": "", "by_regress": false}],
-  "prompt_diff_summary": "which instruction blocks were removed or reworded",
+  "prompt_diff_summary": "which instruction blocks the commit removed or reworded, from its diff",
+  "suspect_commit": {"sha": "", "url": "", "message": ""},
   "live": {"prompt_version": 0, "model": ""}
 }
 ```
