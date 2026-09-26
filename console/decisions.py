@@ -1,8 +1,9 @@
 """Answering the agent's one pending approval, from the console or from Slack, under the same checks.
 
 A decision is refused unless the incident is checkpointed, exactly one gated call is pending and its
-arguments equal the frozen proposal. The first decision takes a lock in the store, so a second click from
-either surface is refused with who decided.
+arguments equal the frozen proposal. The first decision on a pending call takes a lock in the store, so a
+second click from either surface is refused with who decided. The lock is keyed to the call: after a resume
+the agent re-issues the gated call under a new id, and that call can be decided again.
 """
 
 import logging
@@ -35,9 +36,6 @@ def _proposal_args(proposal: dict) -> tuple[str, dict]:
 def apply_decision(store: Store, tf_client: Callable[[], httpx.Client], incident_id: str, decision: str,
                    reason: str | None, actor: str) -> dict:
     inc = store.incident(incident_id)
-    held = (store.notification(incident_id) or {}).get("decided_by")
-    if held:
-        raise DecisionRefused(f"{incident_id} was already decided by {held}")
     if inc["status"] != "checkpointed" or not inc["proposal"]:
         raise DecisionRefused(f"{incident_id} is {inc['status']}; only a checkpointed incident awaits a decision")
     with tf_client() as h:
@@ -47,6 +45,9 @@ def apply_decision(store: Store, tf_client: Callable[[], httpx.Client], incident
         view = trueforge.session_view(h, sid)
         gated = [p for p in view["pending"] if p["tool"] in GATED_TOOLS]
         if not gated:
+            held = (store.notification(incident_id) or {}).get("decided_by")
+            if held:  # answered, and the agent has not re-asked: waiting will not help
+                raise DecisionRefused(f"{incident_id} was already decided by {held}")
             raise DecisionRefused("Regress has not paused on the approval yet", retryable=True)
         if len(gated) > 1:
             raise DecisionRefused(f"expected exactly one pending gated call, found {len(gated)}")
@@ -55,7 +56,7 @@ def apply_decision(store: Store, tf_client: Callable[[], httpx.Client], incident
         actual = {k: pending["arguments"].get(k) for k in expected}
         if pending["tool"] != tool or actual != expected or pending["arguments"].get("incident_id") != incident_id:
             raise DecisionRefused(f"the pending call does not match the frozen proposal: {pending['tool']} {actual}")
-        held = store.claim_decision(incident_id, actor)
+        held = store.claim_decision(incident_id, actor, pending["tool_call_id"])
         if held:
             raise DecisionRefused(f"{incident_id} was already decided by {held}")
         note = reason if actor == "console" or decision == "allow" else f"{reason or 'no reason given'} (rejected by {actor} in Slack)"
@@ -66,6 +67,6 @@ def apply_decision(store: Store, tf_client: Callable[[], httpx.Client], incident
             raise
     try:
         slack.mark_decided(store, incident_id, decision, actor, reason)
-    except (slack.SlackError, httpx.HTTPError) as exc:  # the decision is made; a stale Slack message is cosmetic
+    except Exception as exc:  # the decision is already committed in TrueForge; a stale Slack message is cosmetic
         log.warning("could not update the Slack message for %s: %s", incident_id, exc)
     return {"ok": True, "decision": decision, "turn_id": turn_id, "session_url": view["url"]}

@@ -52,6 +52,7 @@ A new `notifications` table in the incident store:
 | `ts` | Slack message timestamp of the approval message |
 | `decided_by` | Slack user or `console` |
 | `decided_at` | ISO timestamp |
+| `decided_call` | the pending TrueForge `tool_call_id` the decision answered; the lock is per call, so a call re-issued after a resume can be decided again |
 
 ### Console
 

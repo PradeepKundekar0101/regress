@@ -33,10 +33,14 @@ GITHUB_TOOLS = ["list_commits", "get_commit", "get_file_contents", "list_issues"
 # PostHog: registered with ?readonly=true&mode=tools&tools=... and pinned to one project, then limited
 # again here. These are queries only; nothing that edits flags, experiments or data is exposed.
 POSTHOG_TOOLS = ["execute-sql", "query-trends", "query-trends-actors", "persons-retrieve"]
-# Linear's hosted MCP files and updates the incident issue. Tool names are read from the server at bootstrap;
-# anything that deletes, archives or removes is left out.
+# Linear's hosted MCP files, comments on and closes the incident issue. Only this allowlist is exposed (it covers
+# both naming generations of Linear's MCP: create_/update_ and save_); nothing that deletes, archives or touches
+# projects, teams or documents. Ticket writes are not production changes, so none of them is approval-gated:
+# @destructive could pause the agent on update_issue at the Close step.
 LINEAR_URL = "https://mcp.linear.app/mcp"
-LINEAR_BLOCKED = ("delete", "archive", "remove")
+LINEAR_TOOLS = ["list_teams", "get_team", "list_issue_statuses", "get_issue_status", "list_issue_labels",
+                "list_issues", "get_issue", "create_issue", "update_issue", "save_issue", "list_comments",
+                "create_comment", "save_comment", "list_users", "get_user"]
 
 INSTRUCTIONS = """You are Regress, the on-call agent for the Adopt.ai customer support bot (an LLM app).
 When the support bot quietly gets worse after a prompt, model or route change, you find what changed,
@@ -115,9 +119,15 @@ def register_linear_connector(h: httpx.Client) -> list[str]:
         "auth": {"type": "header", "headers": {"Authorization": f"Bearer {key}"}},
     }}))
     tools = _check(h.get(f"{TRUEFORGE}/mcp-servers/linear/tools"))
-    names = sorted(t["name"] for t in (tools["data"]["tools"] if isinstance(tools["data"], dict) else tools["data"]))
-    allowed = [n for n in names if not any(b in n.lower() for b in LINEAR_BLOCKED)]
+    names = {t["name"] for t in (tools["data"]["tools"] if isinstance(tools["data"], dict) else tools["data"])}
+    allowed = sorted(names & set(LINEAR_TOOLS))
+    missing = sorted(set(LINEAR_TOOLS) - names)
     print(f"connector linear: {len(allowed)} of {len(names)} tools: {', '.join(allowed)}")
+    if missing:
+        print(f"connector linear: allowlisted but not offered by the server: {', '.join(missing)}")
+    if not {"create_issue", "save_issue"} & set(allowed):
+        raise SystemExit("connector linear: the server offers neither create_issue nor save_issue; "
+                         "Regress cannot file incident issues")
     return allowed
 
 
@@ -142,7 +152,7 @@ def manifest(available: set[str], linear_tools: list[str]) -> dict:
         servers.append({"name": "github", "enable_tools": GITHUB_TOOLS, "require_approval_for_tools": ["@destructive"]})
     instructions = INSTRUCTIONS
     if "linear" in available and linear_tools:
-        servers.append({"name": "linear", "enable_tools": linear_tools, "require_approval_for_tools": ["@destructive"]})
+        servers.append({"name": "linear", "enable_tools": linear_tools, "require_approval_for_tools": []})
         instructions += f"\nFile incident issues in the Linear team {config.env('LINEAR_TEAM')!r}."
     return {
         "model": {"name": MODEL, "params": {"parallel_tool_calls": True}},

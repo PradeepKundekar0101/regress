@@ -116,10 +116,48 @@ def test_console_decision_updates_the_slack_message(env, slack_api):
 
 def test_second_decision_names_who_decided(env):
     store, inc, use = env
-    store.claim_decision(inc, "@ana")
+    store.claim_decision(inc, "@ana", "call_1")
     fake = FakeTrueForge(pending_call(good_args(inc)))
     resp = use(fake).post(f"/api/incidents/{inc}/decision", json={"decision": "deny", "reason": "late"})
     assert resp.status_code == 409 and "already decided by @ana" in resp.text and fake.posted == []
+
+
+def test_decided_then_reproposed_can_decide_again(env):
+    store, inc, use = env
+    store.claim_decision(inc, "@ana", "call_0")  # answered before a resume re-issued the gated call
+    fake = FakeTrueForge(pending_call(good_args(inc)))
+    resp = use(fake).post(f"/api/incidents/{inc}/decision", json={"decision": "allow"})
+    assert resp.status_code == 200, resp.text
+    assert fake.posted[0]["input"][0]["tool_call_id"] == "call_1"
+    assert store.notification(inc)["decided_by"] == "console"
+
+
+def test_decided_and_nothing_pending_says_who(env):
+    from console import decisions
+    store, inc, use = env
+    store.claim_decision(inc, "@ana", "call_1")
+    fake = FakeTrueForge(None)
+    resp = use(fake).post(f"/api/incidents/{inc}/decision", json={"decision": "allow"})
+    assert resp.status_code == 409 and "already decided by @ana" in resp.text and fake.posted == []
+    with pytest.raises(decisions.DecisionRefused) as exc:
+        decisions.apply_decision(store, console_app.tf_client, inc, "allow", None, actor="@bo")
+    assert exc.value.retryable is False
+
+
+def test_slack_failure_after_the_decision_is_not_an_error(env, monkeypatch):
+    from regress_mcp import slack
+    store, inc, use = env
+    monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")
+    monkeypatch.setenv("SLACK_CHANNEL", "C1")
+    store.save_notification(inc, "C1", "100.1", summary="summary")
+
+    def explode(request):
+        raise RuntimeError("slack is down in a way httpx does not wrap")
+    monkeypatch.setattr(slack, "transport", httpx.MockTransport(explode))
+    fake = FakeTrueForge(pending_call(good_args(inc)))
+    resp = use(fake).post(f"/api/incidents/{inc}/decision", json={"decision": "allow"})
+    assert resp.status_code == 200, resp.text
+    assert fake.posted and store.notification(inc)["decided_by"] == "console"
 
 
 def test_failed_answer_releases_the_decision(env):

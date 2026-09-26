@@ -83,6 +83,18 @@ def test_only_listed_approvers_may_decide(slack_api, monkeypatch):
     assert all("not on the approver list" in t["text"] for t in slack_api.of("chat.postEphemeral"))
 
 
+def test_reason_submission_checks_the_approver_list_too(slack_api, monkeypatch):
+    monkeypatch.setenv("SLACK_APPROVERS", "U9")
+    apply = Apply({"ok": True})
+    body = {"user": {"id": "U1", "username": "ana"}, "view": {
+        "private_metadata": json.dumps({"incident_id": "inc_1", "channel": "C1"}),
+        "state": {"values": {"reason": {"value": {"value": "no"}}}}}}
+    bridge.handle_reject_submit(body, apply, sleep=no_sleep)
+    assert apply.calls == []
+    [told] = slack_api.of("chat.postEphemeral")
+    assert told["user"] == "U1" and "not on the approver list" in told["text"]
+
+
 def test_status_is_off_until_started():
     assert bridge.status() == "off"
 

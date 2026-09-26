@@ -92,6 +92,10 @@ def request_approval(store: Store, incident_id: str, summary: str, linear_url: s
     blocks = approval_blocks(incident, summary, linear_url)
     text = f"Regress {incident_id} needs a decision"
     existing = store.notification(incident_id)
+    if existing and existing["decided_by"]:
+        # A re-ask after a resume needs a fresh decision (the lock is per pending call); say it was decided before.
+        blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text":
+                       f"Previously decided by {existing['decided_by']}; Regress is asking again."}]})
     if existing and existing["ts"]:
         call("chat.update", channel=existing["channel"], ts=existing["ts"], text=text, blocks=blocks)
         channel, ts, updated = existing["channel"], existing["ts"], True

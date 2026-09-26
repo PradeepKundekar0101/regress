@@ -73,7 +73,8 @@ create table if not exists notifications (
   summary      text,          -- the agent's summary, kept so the message can be redrawn once decided
   linear_url   text,
   decided_by   text,          -- first decider: "@slack-user" or "console"; the lock against a second decision
-  decided_at   text
+  decided_at   text,
+  decided_call text           -- the pending TrueForge tool_call_id that decision answered; the lock is per call
 );
 """
 
@@ -107,6 +108,10 @@ class Store:
         self.path = path
         with self._conn() as conn:
             conn.executescript(SCHEMA)
+            # `create table if not exists` does not alter an existing table; add columns added since.
+            columns = {r["name"] for r in conn.execute("pragma table_info(notifications)")}
+            if "decided_call" not in columns:
+                conn.execute("alter table notifications add column decided_call text")
 
     @contextmanager
     def _conn(self):
@@ -293,26 +298,30 @@ class Store:
                 (incident_id, channel, ts, summary, linear_url),
             )
 
-    def claim_decision(self, incident_id: str, actor: str) -> str | None:
-        """Take the incident's one decision atomically. None if taken now, else who already holds it."""
+    def claim_decision(self, incident_id: str, actor: str, call_id: str) -> str | None:
+        """Take the decision on pending call `call_id` atomically. None if taken now, else who already holds it.
+
+        The lock is per call: after a resume the agent re-issues the gated call under a new id, which needs a
+        fresh decision, so a lock held for an older call is stale and is overwritten.
+        """
         with self._conn() as conn:
             conn.execute("begin immediate")
             conn.execute("insert or ignore into notifications (incident_id) values (?)", (incident_id,))
-            held = conn.execute("select decided_by from notifications where incident_id = ?",
-                                (incident_id,)).fetchone()["decided_by"]
-            if held:
+            row = conn.execute("select decided_by, decided_call from notifications where incident_id = ?",
+                               (incident_id,)).fetchone()
+            if row["decided_by"] and row["decided_call"] == call_id:
                 conn.execute("rollback")
-                return held
-            conn.execute("update notifications set decided_by = ?, decided_at = ? where incident_id = ?",
-                          (actor, now_iso(), incident_id))
+                return row["decided_by"]
+            conn.execute("update notifications set decided_by = ?, decided_at = ?, decided_call = ? "
+                         "where incident_id = ?", (actor, now_iso(), call_id, incident_id))
             conn.execute("commit")
         return None
 
     def release_decision(self, incident_id: str) -> None:
         """Undo a claim whose answer never reached TrueForge, so the decision can be made again."""
         with self._conn() as conn:
-            conn.execute("update notifications set decided_by = null, decided_at = null where incident_id = ?",
-                         (incident_id,))
+            conn.execute("update notifications set decided_by = null, decided_at = null, decided_call = null "
+                         "where incident_id = ?", (incident_id,))
 
     @staticmethod
     def _incident_dict(row: sqlite3.Row) -> dict:

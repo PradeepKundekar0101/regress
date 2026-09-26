@@ -84,6 +84,8 @@ def handle_reject(body: dict) -> None:
 
 def handle_reject_submit(body: dict, apply: Apply, **retry) -> None:
     meta = json.loads(body["view"]["private_metadata"])
+    if not _allowed(meta["channel"], body["user"]):  # the submitter is checked, not only whoever opened the modal
+        return
     reason = body["view"]["state"]["values"]["reason"]["value"]["value"]
     decide_with_retry(apply, meta["incident_id"], "deny", reason, body["user"], meta["channel"], **retry)
 

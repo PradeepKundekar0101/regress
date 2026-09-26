@@ -96,3 +96,18 @@ def test_recovery_effect_check_per_signal_kind():
     assert not _within_effect("format_valid", 0.60, 1.0)        # 40 points off: still degraded
     assert _within_effect("latency_p95_ms", 2900.0, 2600.0)     # 1.1x
     assert not _within_effect("latency_p95_ms", 7000.0, 2600.0)  # 2.7x
+
+
+def test_approved_transition_names_who_approved(tmp_path):
+    from regress_mcp.actions import approval_reason
+    from regress_mcp.store import Store
+    store = Store(tmp_path / "state.sqlite")
+    inc = store.open_incident("eval_score", [])
+    assert approval_reason(store, inc) == "approved by a human in TrueForge"  # no notification row
+    store.save_notification(inc, "C1", "100.1")
+    assert approval_reason(store, inc) == "approved by a human in TrueForge"  # a message, no recorded decider
+    store.claim_decision(inc, "@ana", "call_1")
+    assert approval_reason(store, inc) == "approved by @ana"
+    store.release_decision(inc)
+    store.claim_decision(inc, "console", "call_1")
+    assert approval_reason(store, inc) == "approved by console"

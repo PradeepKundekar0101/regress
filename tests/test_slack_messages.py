@@ -37,6 +37,19 @@ def test_asking_again_updates_the_same_message(checkpointed, slack_api):
     assert "second" in text_of(upd["blocks"])
 
 
+def test_asking_again_after_a_decision_says_so_under_live_buttons(checkpointed, slack_api):
+    store, inc = checkpointed
+    slack.request_approval(store, inc, "first", None)
+    assert "Previously decided" not in str(slack_api.of("chat.postMessage")[0]["blocks"])
+    store.claim_decision(inc, "@ana", "call_0")  # answered, then the agent resumed and re-asked
+    slack.request_approval(store, inc, "second", None)
+    [upd] = slack_api.of("chat.update")
+    assert [b["action_id"] for b in buttons(upd["blocks"])] == [slack.APPROVE, slack.REJECT]
+    last = upd["blocks"][-1]
+    assert last["type"] == "context"
+    assert last["elements"][0]["text"] == "Previously decided by @ana; Regress is asking again."
+
+
 def test_refuses_unless_checkpointed(checkpointed, slack_api):
     store, inc = checkpointed
     store.transition(inc, "denied", "no", [])

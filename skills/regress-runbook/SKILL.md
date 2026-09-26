@@ -36,9 +36,9 @@ Reads and replays are free. Exactly one production write exists per incident, an
    If it is rejected, fix exactly what it names and try once more; if rejected again, call it with text `TEMPLATE` and use that.
 7. **Propose.** If checkpointed:
    1. File the Linear issue in the team named in your instructions: title `Regress <incident_id>: <verdict>`, description the validator's `rendered` report.
-   2. Call `request_approval(incident_id, summary, linear_url)`; the summary is at most five lines of the rendered report (what happened, cause, proposed action).
-   3. Post the rendered report in chat.
-   4. Call the gated tool with the proposal's arguments. TrueForge pauses until a human approves in Slack or the console.
+   2. Post the rendered report in chat.
+   3. Call `request_approval(incident_id, summary, linear_url)`; the summary is at most five lines of the rendered report (what happened, cause, proposed action).
+   4. Call the gated tool with the proposal's arguments immediately after request_approval, with nothing in between. TrueForge pauses until a human approves in Slack or the console.
 8. **Verify.** After the tool returns `applied` (or `already_applied_reconciled`), call `verify_recovery`.
    If it returns `pending`, wait by running `sleep 45` in the sandbox and call it again, up to eight times.
 9. **Close.** Write the outcome with `{{ev_id}}` placeholders from `verify_recovery`'s evidence (metric before and after), run it through `validate_narrative`, then:
