@@ -18,7 +18,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from regress_mcp import actions, detector, gates, localize as localize_mod, narrative, replay, sources
+from regress_mcp import actions, detector, gates, localize as localize_mod, narrative, replay, slack, sources
 from regress_mcp.store import Store, TransitionError
 from target import config
 from target.prompts_registry import production_version
@@ -26,18 +26,19 @@ from target.prompts_registry import production_version
 INSTRUCTIONS = """Investigate regressions in the Adopt.ai support bot.
 Every number you report must come from an evidence id returned by these tools; write it as {{ev_id}}.
 Flow: run_detector -> record_plan -> localize -> get_traces -> replay_generate -> (score in sandbox) ->
-submit_replay_report -> check_gates -> validate_narrative -> rollback_execute or route_revert (needs human
-approval) -> verify_recovery. NOT_LOCALIZED and INSUFFICIENT_DATA are valid endings."""
+submit_replay_report -> check_gates -> validate_narrative -> request_approval (Slack) -> rollback_execute or
+route_revert (needs human approval) -> verify_recovery -> post_update. NOT_LOCALIZED and INSUFFICIENT_DATA are valid endings."""
 
 READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
 ANALYSE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False)
 WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=True)
+NOTIFY = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
 
 mcp = MCPServer("regress", instructions=INSTRUCTIONS)
 store = Store()
 
 # Refusals the agent must read and act on. MCP hides the text of any other exception.
-EXPECTED = (actions.ActionRefused, TransitionError, ValueError, KeyError)
+EXPECTED = (actions.ActionRefused, TransitionError, ValueError, KeyError, slack.SlackError)
 
 
 def tool(annotations: ToolAnnotations):
@@ -355,6 +356,23 @@ def record_decision(incident_id: str, decision: str, reason: str) -> dict:
     verdict = {"not_localized": "NOT_LOCALIZED", "insufficient_data": "INSUFFICIENT_DATA"}.get(decision)
     fields = {"verdict": verdict} if verdict else {}
     return store.transition(incident_id, decision, reason, [], **fields)
+
+
+@tool(NOTIFY)
+def request_approval(incident_id: str, summary: str, linear_url: str | None = None) -> dict:
+    """Ask for the human decision in Slack: your summary plus Approve/Reject buttons built from the frozen proposal.
+
+    Call after check_gates returned checkpointed and before the gated tool. The summary is validator-rendered
+    text (no {{ev_id}}). Pass the Linear issue URL if you filed one. Calling again updates the same message.
+    """
+    return slack.request_approval(store, incident_id, summary, linear_url)
+
+
+@tool(NOTIFY)
+def post_update(incident_id: str, text: str) -> dict:
+    """Reply in the incident's Slack thread, or start one if none exists: outcomes, a denial's next branch,
+    or a NOT_LOCALIZED / INSUFFICIENT_DATA ending. Text is validator-rendered (no {{ev_id}})."""
+    return slack.post_update(store, incident_id, text)
 
 
 @tool(WRITE)
