@@ -2,10 +2,11 @@
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from mcp.server.mcpserver.exceptions import ToolError
 
+from console import app as console_app
 from regress_mcp import customer_view, server
-from regress_mcp.store import Store
 
 # The markup renderSlip() in target/bot/static/index.html produces.
 SLIP_V1 = """<article class="slip"><div class="who"><svg class="spark"></svg>Ada, Adopt Help</div>
@@ -52,7 +53,7 @@ def test_media_files_rejects_unknown_phase():
 
 
 @pytest.fixture
-def tool_store(tmp_path, monkeypatch, checkpointed):
+def tool_store(monkeypatch, checkpointed):
     store, inc = checkpointed
     monkeypatch.setattr(server, "store", store)
     return store, inc
@@ -98,3 +99,47 @@ def test_capture_failure_is_reported_not_raised(tool_store, monkeypatch):
     assert out == {"captured": False, "reason": "TimeoutError: no reply slip in 45 s"}
     assert store.incident(inc)["status"] == "checkpointed"
     assert store.evidence(inc) == {}
+
+
+INC = "inc_20260926_085527_4fce"
+
+
+@pytest.fixture
+def media_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(customer_view, "MEDIA_ROOT", tmp_path)
+    folder = tmp_path / INC
+    folder.mkdir()
+    (folder / "before.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    (folder / "before-poster.png").write_bytes(b"\x89PNG")
+    (tmp_path / "secret.txt").write_text("no")
+    return folder
+
+
+def test_media_endpoint_serves_the_video_and_poster(media_root):
+    client = TestClient(console_app.app)
+    video = client.get(f"/api/incidents/{INC}/media/before")
+    assert video.status_code == 200 and video.headers["content-type"] == "video/mp4"
+    assert client.get(f"/api/incidents/{INC}/media/before/poster").headers["content-type"] == "image/png"
+    assert client.get(f"/api/incidents/{INC}/media/after").status_code == 404
+
+
+@pytest.mark.parametrize("path", [
+    f"/api/incidents/{INC}/media/during",
+    f"/api/incidents/{INC}/media/..%2F..%2Fsecret.txt",
+    "/api/incidents/..%2Fsecret.txt/media/before",
+    "/api/incidents/inc_1/media/before",
+])
+def test_media_endpoint_rejects_unknown_phases_and_path_tricks(media_root, path):
+    assert TestClient(console_app.app).get(path).status_code == 404
+
+
+def test_incident_media_summary_comes_from_the_evidence(media_root):
+    src = {"kind": "video", "prompt_version": 2, "model": "gpt-4.1-mini", "citations": [], "question": "q"}
+    evidence = {"ev_1": {"computed_by": "regress-mcp/customer_view", "label": "customer view before: specialist banner shown",
+                         "value": 0.0, "source": src, "created_at": "2026-09-26T09:00:00+00:00",
+                         "window_from": "2026-09-26T09:00:00+00:00"}}
+    media = console_app._media(INC, evidence)
+    assert list(media) == ["before"]
+    assert media["before"]["banner"] is False and media["before"]["prompt_version"] == 2
+    assert media["before"]["url"] == f"/api/incidents/{INC}/media/before"
+    assert media["before"]["poster"] == f"/api/incidents/{INC}/media/before/poster"

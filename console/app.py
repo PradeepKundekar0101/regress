@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from console import decisions, trueforge
 from console import slack as slack_bridge
 from target import config_repo
-from regress_mcp import narrative
+from regress_mcp import customer_view, narrative
 from regress_mcp.detector import BASELINE_MINUTES, MIN_BASELINE_BUCKETS, MIN_VOLUME, detect
 from regress_mcp.store import Store
 from target import config
@@ -185,7 +185,50 @@ def incident(incident_id: str) -> dict:
                     for c in commits],
         "evidence": [{"id": e["id"], "label": e["label"], "value": narrative.fmt(e), "kind": e["source"].get("kind"),
                       "computed_by": e["computed_by"]} for e in evidence.values()],
+        "media": _media(incident_id, evidence),
     }
+
+
+def _media(incident_id: str, evidence: dict[str, dict]) -> dict:
+    """The before and after customer-view recordings, with what the page showed (read from their evidence)."""
+    out = {}
+    for phase in customer_view.PHASES:
+        files = customer_view.media_files(incident_id, phase)
+        banner = max((e for e in evidence.values() if e["computed_by"] == "regress-mcp/customer_view"
+                      and e["label"] == f"customer view {phase}: specialist banner shown"),
+                     key=lambda e: e["created_at"], default=None)
+        if "video" not in files or banner is None:
+            continue
+        src, url = banner["source"], f"/api/incidents/{incident_id}/media/{phase}"
+        out[phase] = {"url": url, "poster": f"{url}/poster" if "poster" in files else None,
+                      "captured_at": banner["window_from"], "banner": banner["value"] == 1,
+                      "prompt_version": src.get("prompt_version"), "model": src.get("model"),
+                      "citations": src.get("citations") or [], "question": src.get("question")}
+    return out
+
+
+MEDIA_TYPES = {".mp4": "video/mp4", ".webm": "video/webm", ".png": "image/png"}
+
+
+@app.get("/api/incidents/{incident_id}/media/{phase}")
+def media(incident_id: str, phase: str) -> FileResponse:
+    return _media_file(incident_id, phase, "video")
+
+
+@app.get("/api/incidents/{incident_id}/media/{phase}/poster")
+def media_poster(incident_id: str, phase: str) -> FileResponse:
+    return _media_file(incident_id, phase, "poster")
+
+
+def _media_file(incident_id: str, phase: str, kind: str) -> FileResponse:
+    # media_files() accepts only a well-formed incident id and a known phase, so no path is built from raw input.
+    try:
+        path = customer_view.media_files(incident_id, phase).get(kind)
+    except ValueError:
+        raise HTTPException(404, "no such recording")
+    if path is None:
+        raise HTTPException(404, "no such recording")
+    return FileResponse(path, media_type=MEDIA_TYPES[path.suffix], headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/incidents/{incident_id}/evidence/{evidence_id}")

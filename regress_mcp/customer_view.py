@@ -78,7 +78,7 @@ def media_dir(incident_id: str) -> Path:
 
 
 def media_files(incident_id: str, phase: str) -> dict[str, Path]:
-    """The saved video and screenshot for a phase, whichever exist. MP4 wins over WebM."""
+    """The saved video, poster and reply screenshot for a phase, whichever exist. MP4 wins over WebM."""
     if phase not in PHASES:
         raise ValueError(f"phase must be one of {PHASES}")
     folder, found = media_dir(incident_id), {}
@@ -86,8 +86,9 @@ def media_files(incident_id: str, phase: str) -> dict[str, Path]:
         if (folder / f"{phase}.{ext}").is_file():
             found["video"] = folder / f"{phase}.{ext}"
             break
-    if (folder / f"{phase}.png").is_file():
-        found["screenshot"] = folder / f"{phase}.png"
+    for kind, name in (("poster", f"{phase}-poster.png"), ("screenshot", f"{phase}.png")):
+        if (folder / name).is_file():
+            found[kind] = folder / name
     return found
 
 
@@ -137,6 +138,8 @@ def _record(url: str, question: str, folder: Path, phase: str) -> dict:
             facts = observe(slip.evaluate("el => el.outerHTML"))
             screenshot = folder / f"{phase}.png"
             slip.screenshot(path=str(screenshot))
+            # The video's last frame, shown before anyone presses play.
+            page.screenshot(path=str(folder / f"{phase}-poster.png"))
             video = page.video
             context.close()  # Playwright finalises the video on close.
             webm = folder / f"{phase}.webm"

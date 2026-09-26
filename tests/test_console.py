@@ -219,3 +219,23 @@ def test_not_paused_yet_is_retryable(env):
         decisions.apply_decision(store, console_app.tf_client, inc, "allow", None, actor="@ana")
     assert exc.value.retryable is True
     assert (store.notification(inc) or {}).get("decided_by") is None
+
+
+def test_session_lookup_pages_through_trueforge_25_at_a_time(tmp_path, monkeypatch):
+    monkeypatch.setattr(trueforge, "WATCHER_STATE", tmp_path / "missing.json")
+    seen = []
+
+    def fake(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        seen.append(params)
+        if int(params["limit"]) > 25:
+            return httpx.Response(400, json={"error": {"message": "Too big: expected number to be <=25"}})
+        if "page_token" not in params:
+            return httpx.Response(200, json={"data": [{"id": "s_old", "metadata": {"incident_id": "inc_other"}}],
+                                             "pagination": {"next_page_token": "p2"}})
+        return httpx.Response(200, json={"data": [{"id": "s_mine", "metadata": {"incident_id": "inc_mine"}}],
+                                         "pagination": {}})
+    with trueforge.client(httpx.MockTransport(fake)) as h:
+        assert trueforge.session_for("inc_mine", h) == "s_mine"
+        assert trueforge.session_for("inc_absent", h) is None
+    assert seen[1] == {"limit": "25", "page_token": "p2"}

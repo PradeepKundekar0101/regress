@@ -394,6 +394,24 @@
   .decision.done { border-color: var(--line); background: var(--surface); box-shadow: var(--shadow); }
   .decision.done .label { color: var(--muted); }
 
+  /* What customers see: the live bot filmed before approval and after verification, played in sync. */
+  .cview { display: grid; gap: 10px; }
+  .cview-h { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+  .cview-h b { font: 600 13.5px/1.3 var(--sans); }
+  .cview-h .q { color: var(--muted); font-size: 12.5px; }
+  .cview-h .btn { margin-left: auto; padding: 7px 14px; }
+  .cview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .clip { margin: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); min-width: 0; }
+  .clip video, .clip .ph { display: block; width: 100%; aspect-ratio: 900 / 720; background: var(--surface-2); }
+  .clip video { cursor: pointer; object-fit: contain; }
+  .clip .ph { display: grid; place-items: center; padding: 16px; text-align: center; color: var(--muted); font-size: 13px; }
+  .clip.pending { border-style: dashed; }
+  .clip figcaption { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; padding: 9px 12px; border-top: 1px solid var(--line); font-size: 12.5px; }
+  .clip figcaption .phase { font-weight: 600; }
+  .clip figcaption .mono { color: var(--muted); font-size: 12px; }
+  .clip figcaption .chip { margin-left: auto; }
+  @media (max-width: 760px) { .cview-grid { grid-template-columns: minmax(0, 1fr); } }
+
   .tabs { display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--line); overflow-x: auto; }
   .tabs button { border: 0; background: none; padding: 14px 10px 12px; cursor: pointer; font-weight: 500; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
   .tabs button:hover { color: var(--ink); }
@@ -1304,6 +1322,50 @@ function changeLine(p) {
     : [`route ${p.route}  `, el("span", { class: "from" }, p.from_model), el("span", { class: "arrow" }, " → "), el("span", { class: "to" }, p.to_model)];
 }
 
+const NO_AFTER = { checkpointed: "Recorded after the fix is verified.", approved: "Recorded after the fix is verified.",
+  applied: "Recorded after the fix is verified.", denied: "Not recorded: nothing was changed.",
+  verify_failed: "Not recorded: recovery was not verified.", conflict: "Not recorded: the change was not applied." };
+
+function customerView(d) {
+  const m = d.media || {};
+  if (!m.before && !m.after) return null;
+  const videos = [];
+  const clip = (phase, x, missing) => {
+    const title = phase === "before" ? "Before" : "After";
+    if (!x) return el("figure", { class: "clip pending" }, el("div", { class: "ph" }, missing),
+      el("figcaption", {}, el("span", { class: "phase" }, title)));
+    const v = el("video", { src: x.url, poster: x.poster, preload: "metadata", playsinline: "", muted: "",
+      "aria-label": `${title}: the bot's reply to the fraud question, prompt v${x.prompt_version}` });
+    v.muted = true; v.playsInline = true;
+    v.onclick = () => toggle();
+    for (const e of ["play", "pause", "ended"]) v.addEventListener(e, () => label());
+    videos.push(v);
+    return el("figure", { class: "clip" }, v,
+      el("figcaption", {}, el("span", { class: "phase" }, title),
+        el("span", { class: "mono" }, `prompt v${x.prompt_version} · ${x.model}${x.citations.length ? ` · ${x.citations.join(", ")}` : " · no sources"}`),
+        el("span", { class: `chip ${x.banner ? "ok" : "bad"}` }, x.banner ? "Specialist banner" : "No specialist banner")));
+  };
+  const grid = el("div", { class: "cview-grid" },
+    clip("before", m.before, "Not recorded."),
+    clip("after", m.after, d.status === "verified" ? "Not recorded." : NO_AFTER[d.status] || "Recorded after the fix is verified."));
+  const btn = el("button", { class: "btn", type: "button" });
+  const playing = () => videos.some((v) => !v.paused && !v.ended);
+  // One control for both clips, so the difference is watched at once; never autoplays.
+  function toggle() {
+    if (playing()) { videos.forEach((v) => v.pause()); return; }
+    const fresh = videos.some((v) => v.ended) || videos.every((v) => v.currentTime === 0);
+    videos.forEach((v) => { if (fresh) v.currentTime = 0; v.play().catch(() => {}); });
+  }
+  function label() {
+    btn.textContent = playing() ? "Pause" : videos.some((v) => v.ended) ? "Play again" : videos.length > 1 ? "Play both" : "Play";
+  }
+  btn.onclick = toggle; label();
+  const q = (m.before || m.after).question;
+  return el("div", { class: "cview", role: "group", "aria-label": "What customers see" },
+    el("div", { class: "cview-h" }, el("b", {}, "What customers see"), q ? el("span", { class: "q" }, `“${q}” asked in the live bot`) : null, btn),
+    grid);
+}
+
 function decisionCard(d) {
   const p = d.proposal, pending = d.session && d.session.pending && d.session.pending[0];
   const blast = p.blast_radius || {};
@@ -1334,6 +1396,7 @@ function decisionCard(d) {
       el("dt", {}, "Who it affects"), el("dd", {}, `${blast.scope || ""}${blast.requests_in_window ? ` · ${blast.affected_requests_in_window} of ${blast.requests_in_window} requests in the incident window` : ""}`),
       el("dt", {}, "How to undo"), el("dd", {}, p.undo),
       p.change_commit && p.change_commit.message ? [el("dt", {}, "Caused by"), el("dd", {}, p.change_commit.url ? el("a", { href: p.change_commit.url, target: "_blank", rel: "noopener" }, p.change_commit.message) : p.change_commit.message)] : null),
+    customerView(d),
     el("div", { class: "actions" }, allow, denyOpen, denyBox), msg,
     p.change_commit && p.change_commit.sha ? diffView(p.change_commit.sha, "What changed") : null);
 }
@@ -1345,7 +1408,8 @@ function decidedCard(d, t) {
   return el("section", { class: "decision done", "aria-label": "Decision" },
     el("div", { class: "label" }, t.to_status === "approved" ? `Approved at ${timeS(t.ts)}` : `Denied at ${timeS(t.ts)}`),
     el("div", { class: "change" }, changeLine(p)),
-    el("div", { class: "msg" }, t.to_status === "denied" && t.reason ? `${t.reason} · ${next}` : next));
+    el("div", { class: "msg" }, t.to_status === "denied" && t.reason ? `${t.reason} · ${next}` : next),
+    customerView(d));
 }
 
 const STEP_ICONS = {
@@ -1473,9 +1537,11 @@ async function refreshDetail() {
     throw e;
   }
   if (want !== state.selected) return;   // the user picked another incident while this one loaded
-  const key = JSON.stringify([d.id, d.status, d.transitions.length, d.session && d.session.status, d.session && d.session.pending && d.session.pending.length, d.evidence.length, d.session && d.session.report && d.session.report.length, d.session && d.session.closing && d.session.closing.length]);
+  const key = JSON.stringify([d.id, d.status, d.transitions.length, d.session && d.session.status, d.session && d.session.pending && d.session.pending.length, d.evidence.length, d.session && d.session.report && d.session.report.length, d.session && d.session.closing && d.session.closing.length, Object.keys(d.media || {})]);
   if (key === lastDetail) return;
   if (document.activeElement && document.activeElement.tagName === "TEXTAREA") return;
+  // A rebuild would restart the customer-view clips mid-play; catch up once they stop.
+  if ([...$("detail").querySelectorAll("video")].some((v) => !v.paused && !v.ended)) return;
   const first = !lastDetail;
   lastDetail = key;
   renderDetail(d);
