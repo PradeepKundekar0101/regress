@@ -28,6 +28,8 @@ class Signal:
     min_effect: float  # rate: >= this absolute change; ratio: >= this factor
     golden_only: bool
     unit: str
+    # Evidence-only signals are scored and reported but never raise an alarm on their own.
+    alarms: bool = True
 
 
 SIGNALS = [
@@ -35,7 +37,9 @@ SIGNALS = [
     Signal("format_valid", "rate", -1, 0.10, True, "ratio"),
     Signal("escalation_correct", "rate", -1, 0.10, True, "ratio"),
     Signal("citation_correct", "rate", -1, 0.10, True, "ratio"),
-    Signal("refusal_rate", "rate", 0, 0.10, True, "ratio"),
+    # Evidence only: investment-advice questions are a small slice of traffic, so a 5-minute window can swing
+    # the refusal rate past its threshold by chance (a false alarm opened an incident in rehearsal).
+    Signal("refusal_rate", "rate", 0, 0.10, True, "ratio", alarms=False),
     Signal("provider_error_rate", "rate", 1, 0.10, False, "ratio"),
     Signal("latency_p50_ms", "ratio", 1, 2.0, False, "ms"),
     Signal("latency_p95_ms", "ratio", 1, 2.0, False, "ms"),
@@ -176,7 +180,8 @@ def detect(conn: psycopg.Connection, *, as_of: datetime | None = None, window_mi
         spec = SIGNAL_BY_NAME[row["signal"]]
         z = row["z"] or 0.0
         wrong_way = spec.bad_direction == 0 or (z * spec.bad_direction) > 0
-        alarm = bool(abs(z) > Z_THRESHOLD and wrong_way and row["effect_ok"] and row["volume_ok"] and row["baseline_ok"])
+        alarm = bool(spec.alarms and abs(z) > Z_THRESHOLD and wrong_way and row["effect_ok"] and row["volume_ok"]
+                     and row["baseline_ok"])
         label_scope = _label_scope(exclude, only)
         cur = Evidence(f"{spec.name} current window{label_scope}", row["current"], spec.unit, source,
                        "regress-mcp/detector", window_from, window_to)
