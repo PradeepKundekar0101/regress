@@ -32,6 +32,8 @@ Reads and replays are free. Exactly one production write exists per incident, an
 4. **Collect.** Parse each subagent's final message as JSON. Reject anything that is not strict JSON matching its contract (no prose, no code fences) and re-ask once.
 5. **Gate.** Call `check_gates(incident_id, dimension, value)` for the candidate the reports point to (`prompt_version` + the suspect version, or `model` + the suspect model).
    It recomputes everything from stored facts. Do not argue with it.
+   If it returned `checkpointed`, call `capture_customer_view(incident_id, "before")` directly (not from sandbox code): it films the live bot answering the fraud question and records what the customer saw as evidence.
+   If it returns `captured: false`, say so in one line and carry on; it never blocks the incident.
 6. **Narrate.** Write the report (template below) with `{{ev_id}}` placeholders and call `validate_narrative`.
    If it is rejected, fix exactly what it names and try once more; if rejected again, call it with text `TEMPLATE` and use that.
 7. **Propose.** If checkpointed:
@@ -41,7 +43,8 @@ Reads and replays are free. Exactly one production write exists per incident, an
    4. Call the gated tool with the proposal's arguments immediately after request_approval, with nothing in between. TrueForge pauses until a human approves in Slack or the console.
 8. **Verify.** After the tool returns `applied` (or `already_applied_reconciled`), call `verify_recovery`.
    If it returns `pending`, wait by running `sleep 45` in the sandbox and call it again, up to eight times.
-9. **Close.** Write the outcome with `{{ev_id}}` placeholders from `verify_recovery`'s evidence (metric before and after), run it through `validate_narrative`, then:
+   Once it returns `verified`, call `capture_customer_view(incident_id, "after")` directly; a failure is one line in the report, nothing more.
+9. **Close.** Write the outcome with `{{ev_id}}` placeholders from `verify_recovery`'s evidence (metric before and after), plus a `Customer view` line citing the banner and sources evidence from both captures, run it through `validate_narrative`, then:
    - `post_update(incident_id, rendered)` in the Slack thread;
    - comment the same text on the Linear issue;
    - if `verified`, move the issue to the team's completed state (look it up); if `verify_failed`, leave it open.
@@ -56,6 +59,7 @@ What happened: <signals that moved, with {{ev}} current vs baseline>
 Cause: <the commit in the chatbot's repo: message, link, when, and what its diff removed>
 Proof: replay of the same inputs, baseline {{ev}} vs suspect {{ev}}; gates 1-4 with one line each
 Customer impact: <thumbs-down / talk-to-human counts {{ev}}, worst categories>
+Customer view: <before: specialist banner shown {{ev}}, sources cited {{ev}}, prompt version on screen {{ev}}; after verification the same three for "after"; or "capture failed: <reason>">
 Ruled out: <each other candidate with its number, e.g. route unchanged, latency p95 {{ev}} vs {{ev}}>
 Action: <the proposal: exact change, blast radius, how to undo; after apply, link Regress's fix commit, whose diff restores the removed text>
 ```
