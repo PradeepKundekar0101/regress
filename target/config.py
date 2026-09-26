@@ -54,9 +54,11 @@ def db_connect(autocommit: bool = False):
     return psycopg.connect(env("DATABASE_URL"), autocommit=autocommit, connect_timeout=15, **DB_KWARGS)
 
 
-def db_pool(max_size: int):
+def db_pool(max_size: int, autocommit: bool = False):
+    """autocommit=True for read-only pools: each query then costs one round trip instead of two (no COMMIT)."""
     from psycopg_pool import ConnectionPool
-    return ConnectionPool(env("DATABASE_URL"), min_size=1, max_size=max_size, kwargs=DB_KWARGS, open=True)
+    return ConnectionPool(env("DATABASE_URL"), min_size=1, max_size=max_size,
+                          kwargs={**DB_KWARGS, "autocommit": autocommit}, open=True)
 
 
 def optional_env(name: str) -> str | None:

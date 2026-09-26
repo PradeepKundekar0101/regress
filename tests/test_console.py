@@ -100,3 +100,36 @@ def test_rejects_unknown_decisions(env):
     store, inc, use = env
     resp = use(FakeTrueForge(None)).post(f"/api/incidents/{inc}/decision", json={"decision": "approve-everything"})
     assert resp.status_code == 422
+
+
+def test_page_and_icons_are_served():
+    client = TestClient(console_app.app)
+    assert client.get("/").status_code == 200
+    ico = client.get("/favicon.ico")
+    assert ico.status_code == 200 and ico.headers["content-type"] == "image/png"
+    svg = client.get("/static/favicon.svg")
+    assert svg.status_code == 200 and svg.headers["content-type"].startswith("image/svg+xml")
+    assert client.get("/static/apple-touch-icon.png").status_code == 200
+
+
+def test_concurrent_polls_share_one_query(monkeypatch):
+    import threading
+    import time as _time
+    calls = []
+
+    def slow_query():
+        calls.append(1)
+        _time.sleep(0.2)
+        return {"n": len(calls)}
+
+    monkeypatch.setattr(console_app, "_SHARED", {})
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(console_app.shared(("k",), slow_query))) for _ in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(calls) == 1 and all(r == {"n": 1} for r in results)
+
+    monkeypatch.setattr(console_app, "SHARED_TTL_S", 0.0)
+    assert console_app.shared(("k",), slow_query) == {"n": 2}

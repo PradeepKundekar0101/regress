@@ -88,6 +88,11 @@ def index() -> FileResponse:
     return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-store"})
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    return FileResponse(STATIC / "favicon.ico")
+
+
 @app.get("/kb")
 def kb_index() -> list[dict]:
     return config.kb_index()
@@ -109,8 +114,9 @@ def reply(req: ReplyRequest, background: BackgroundTasks):
     model = current_model()
     system = prompt.compile(kb=config.kb_text())
 
-    with langfuse.start_as_current_observation(name="support-reply", as_type="span", input={"question": req.question}) as root:
-        with propagate_attributes(
+    with (
+        langfuse.start_as_current_observation(name="support-reply", as_type="span", input={"question": req.question}) as root,
+        propagate_attributes(
             session_id=session_id,
             tags=[req.source] + ([item.category] if item else []),
             metadata={
@@ -120,32 +126,33 @@ def reply(req: ReplyRequest, background: BackgroundTasks):
                 "model": model,
                 "kb_version": config.kb_version(),
             },
-        ):
-            trace_id = langfuse.get_current_trace_id()
-            started = time.perf_counter()
-            generation, provider_error = None, False
-            with langfuse.start_as_current_observation(
-                name="llm", as_type="generation", model=model, prompt=prompt,
-                model_parameters=llm.sampling_params(model), input=[{"role": "user", "content": req.question}],
-            ) as gen:
-                try:
-                    generation = llm.generate(state["openai"], model, system, req.question)
-                    gen.update(
-                        output=generation.raw,
-                        usage_details={"input": generation.tokens_in, "output": generation.tokens_out},
-                        cost_details={"total": generation.cost_usd} if generation.cost_usd is not None else None,
-                    )
-                except OpenAIError as exc:
-                    provider_error = True
-                    log.warning("provider error: %s", exc)
-                    gen.update(level="ERROR", status_message=str(exc)[:500])
-            latency_ms = generation.latency_ms if generation else int((time.perf_counter() - started) * 1000)
-            raw = generation.raw if generation else ""
+        ),
+    ):
+        trace_id = langfuse.get_current_trace_id()
+        started = time.perf_counter()
+        generation, provider_error = None, False
+        with langfuse.start_as_current_observation(
+            name="llm", as_type="generation", model=model, prompt=prompt,
+            model_parameters=llm.sampling_params(model), input=[{"role": "user", "content": req.question}],
+        ) as gen:
+            try:
+                generation = llm.generate(state["openai"], model, system, req.question)
+                gen.update(
+                    output=generation.raw,
+                    usage_details={"input": generation.tokens_in, "output": generation.tokens_out},
+                    cost_details={"total": generation.cost_usd} if generation.cost_usd is not None else None,
+                )
+            except OpenAIError as exc:
+                provider_error = True
+                log.warning("provider error: %s", exc)
+                gen.update(level="ERROR", status_message=str(exc)[:500])
+        latency_ms = generation.latency_ms if generation else int((time.perf_counter() - started) * 1000)
+        raw = generation.raw if generation else ""
 
-            scores = score(raw, item) if not provider_error else None
-            root.update(output=raw)
-            if scores:
-                _score_trace(langfuse, scores)
+        scores = score(raw, item) if not provider_error else None
+        root.update(output=raw)
+        if scores:
+            _score_trace(langfuse, scores)
 
     background.add_task(record_request, {
         "trace_id": trace_id, "source": req.source, "session_id": session_id,

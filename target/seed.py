@@ -3,7 +3,6 @@
 Idempotent. Run with `uv run python -m target.seed`.
 """
 
-import psycopg
 from langfuse import get_client
 
 from target import config, config_repo

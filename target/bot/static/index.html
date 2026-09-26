@@ -4,119 +4,208 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Adopt Help</title>
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<meta name="theme-color" content="#F5F5F4">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Hedvig+Letters+Serif:opsz@12..24&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --mist: #EEF1F5;
-    --ink: #14213D;
-    --ink-soft: #5A6478;
-    --teal: #0F766E;
-    --teal-tint: #E3F1EF;
-    --amber: #B45309;
-    --amber-tint: #FDF1E3;
-    --slip: #FFFFFF;
-    --hairline: #D5DBE3;
-    --danger: #B42318;
-    --radius: 14px;
-    --display: "Bricolage Grotesque", system-ui, sans-serif;
-    --body: "Instrument Sans", system-ui, sans-serif;
-    --mono: "JetBrains Mono", ui-monospace, monospace;
+    /* Stone scale and indigo accent, as on adopt.ai */
+    --stone-50: #FAFAF9;
+    --stone-100: #F5F5F4;
+    --stone-200: #E7E5E4;
+    --stone-300: #D6D3D1;
+    --stone-400: #A6A09B;
+    --stone-500: #79716B;
+    --stone-700: #44403B;
+    --stone-800: #292524;
+    --stone-950: #0C0A09;
+    --indigo: #171051;
+    --indigo-hover: #2A2170;
+    --sky: #82DAED;
+    --blue: #2E7CFB;
+    --red: #E7001C;
+    --serif: "Hedvig Letters Serif", Georgia, "Times New Roman", serif;
+    --sans: Inter, -apple-system, "Segoe UI", sans-serif;
+    --measure: 760px;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
-    margin: 0; background: var(--mist); color: var(--ink);
-    font: 400 15px/1.55 var(--body);
+    margin: 0; background: var(--stone-100); color: var(--stone-950);
+    font: 400 16px/1.5 var(--sans);
     display: flex; flex-direction: column;
+    -webkit-font-smoothing: antialiased;
   }
   button, input { font: inherit; color: inherit; }
-  :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .spark { fill: currentColor; flex-shrink: 0; }
 
-  .bar { border-bottom: 1px solid var(--hairline); background: var(--mist); }
+  /* Header */
+  .bar { position: sticky; top: 0; z-index: 2; background: var(--stone-100); }
   .bar-inner {
-    max-width: 680px; margin: 0 auto; padding: 18px 16px;
-    display: flex; align-items: baseline; gap: 10px;
+    height: 72px; padding: 0 20px;
+    display: flex; align-items: center; gap: 40px;
   }
-  .wordmark { font: 700 22px/1 var(--display); letter-spacing: -0.02em; }
-  .wordmark span { color: var(--teal); }
-  .bar .section { color: var(--ink-soft); font-weight: 500; }
-  .bar .status { margin-left: auto; font: 400 12px/1 var(--mono); color: var(--ink-soft); }
+  .brand { display: flex; align-items: center; gap: 8px; color: var(--stone-950); text-decoration: none; }
+  .brand .spark { width: 22px; height: 22px; }
+  .brand b { font: 500 24px/1 var(--sans); letter-spacing: -0.02em; }
+  .nav { display: flex; gap: 8px; font: 500 13px/1.4 var(--sans); color: var(--stone-800); }
+  .nav span { padding: 0 16px; }
+  .nav span[aria-current] { color: var(--stone-950); }
+  .status {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 16px;
+    border: 1px solid var(--indigo); color: var(--indigo); font: 500 13px/1 var(--sans); white-space: nowrap;
+  }
+  .status::before { content: ""; width: 6px; height: 6px; background: #6FC800; }
+  .status:empty { display: none; }
 
+  /* Thread */
   main { flex: 1; overflow-y: auto; }
-  .thread { max-width: 680px; margin: 0 auto; padding: 32px 16px 24px; display: flex; flex-direction: column; gap: 18px; }
+  .thread {
+    max-width: var(--measure); margin: 0 auto; padding: 32px 16px 32px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
 
-  .empty h1 { font: 600 30px/1.15 var(--display); letter-spacing: -0.02em; margin: 24px 0 8px; }
-  .empty p { color: var(--ink-soft); margin: 0 0 20px; }
-  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
+  /* Empty state, modelled on the adopt.ai hero */
+  .empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 40px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 10px; padding: 8px 16px;
+    border: 1px solid var(--stone-950); font-size: 16px; line-height: 24px;
+  }
+  .eyebrow .spark { width: 24px; height: 24px; animation: twinkle 4s ease-in-out infinite; }
+  @keyframes twinkle { 50% { transform: rotate(90deg) scale(.85); } }
+  .empty h1 {
+    font: 400 56px/1.1 var(--serif); letter-spacing: -0.01em;
+    margin: 24px 0 0; max-width: 720px; text-wrap: balance;
+  }
+  .empty h1 .muted { display: block; color: var(--stone-400); }
+  .empty p { color: var(--stone-700); margin: 24px 0 0; max-width: 600px; text-wrap: pretty; }
+  .suggestions {
+    width: 100%; margin-top: 48px;
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .suggestions button {
-    border: 1px solid var(--hairline); background: var(--slip); border-radius: 999px;
-    padding: 8px 14px; cursor: pointer; font-size: 14px;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 12px; text-align: left;
+    padding: 24px; margin: -2px; min-height: 132px;
+    background: var(--stone-100); border: 4px solid var(--stone-50); cursor: pointer;
+    transition: background-color .15s ease;
   }
-  .suggestions button:hover { border-color: var(--teal); color: var(--teal); }
+  .suggestions button:hover { background: var(--stone-50); }
+  .suggestions .tag { font-size: 14px; color: var(--stone-500); }
+  .suggestions .q { font: 500 18px/1.4 var(--sans); color: var(--stone-950); }
 
+  /* Customer question */
   .ask {
-    align-self: flex-end; max-width: 80%; background: var(--ink); color: #fff;
-    padding: 10px 14px; border-radius: var(--radius) var(--radius) 4px var(--radius);
+    align-self: flex-end; max-width: 80%; background: var(--indigo); color: var(--stone-50);
+    padding: 12px 18px; font-weight: 500; white-space: pre-wrap;
   }
 
+  /* Ada's reply */
   .slip {
-    align-self: flex-start; width: min(100%, 560px); background: var(--slip);
-    border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden;
-    animation: rise .22s ease-out;
+    align-self: flex-start; width: min(100%, 640px);
+    background: var(--stone-100); border: 4px solid var(--stone-50);
+    animation: rise .24s ease-out;
   }
   @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+  .slip .who {
+    display: flex; align-items: center; gap: 8px; padding: 20px 24px 0;
+    font-size: 14px; color: var(--stone-500);
+  }
+  .slip .who .spark { width: 14px; height: 14px; color: var(--indigo); }
   .slip .handoff {
-    background: var(--amber-tint); color: var(--amber); font-weight: 600; font-size: 13px;
-    padding: 8px 16px; border-bottom: 1px solid #F3D9B8;
+    margin: 16px 24px 0; padding: 10px 14px; border: 1px solid var(--stone-950);
+    display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 500;
   }
-  .slip .answer { padding: 14px 16px 12px; white-space: pre-wrap; }
-  .ledger { margin: 0 16px; padding: 8px 0 10px; border-top: 1px dashed var(--hairline); list-style: none; }
-  .ledger li { display: flex; gap: 10px; font-size: 13px; color: var(--ink-soft); padding: 2px 0; }
-  .ledger .id { font: 500 12px/1.7 var(--mono); color: var(--teal); min-width: 44px; }
+  .slip .handoff::before { content: ""; width: 8px; height: 8px; background: var(--red); flex-shrink: 0; }
+  .slip .answer { padding: 12px 24px 20px; white-space: pre-wrap; color: var(--stone-950); }
+  .ledger { margin: 0 24px; padding: 16px 0 20px; border-top: 1px solid var(--stone-200); list-style: none; }
+  .ledger-title { font-size: 14px; color: var(--stone-500); margin-bottom: 10px; }
+  .ledger ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .ledger li {
+    display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px;
+    border: 1px solid var(--stone-300); font-size: 13px; color: var(--stone-700); background: var(--stone-50);
+  }
+  .ledger .id { font-weight: 600; color: var(--indigo); }
   .slip footer {
-    display: flex; align-items: center; gap: 6px; padding: 8px 10px 8px 16px;
-    border-top: 1px solid var(--hairline); background: #FAFBFC;
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 16px 12px 24px;
+    background: var(--stone-50);
   }
-  .meta { font: 400 11px/1 var(--mono); color: var(--ink-soft); margin-right: auto; }
+  .meta { font-size: 12px; color: var(--stone-500); margin-right: auto; }
   .icon-btn {
-    border: 1px solid transparent; background: none; border-radius: 8px; padding: 5px 8px;
-    cursor: pointer; color: var(--ink-soft); font-size: 13px; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 32px; min-width: 32px; padding: 0 10px;
+    border: 1px solid var(--stone-300); background: transparent; cursor: pointer;
+    color: var(--stone-700); font: 500 13px/1 var(--sans);
+    transition: border-color .15s ease, color .15s ease, background-color .15s ease;
   }
-  .icon-btn:hover { background: var(--mist); color: var(--ink); }
-  .icon-btn[aria-pressed="true"] { background: var(--teal-tint); color: var(--teal); border-color: #BFE0DB; }
-  .icon-btn svg { width: 15px; height: 15px; vertical-align: -3px; }
-  .error { align-self: flex-start; color: var(--danger); font-size: 14px; }
-  .typing { align-self: flex-start; color: var(--ink-soft); font-size: 14px; }
+  .icon-btn:hover:not(:disabled) { border-color: var(--indigo); color: var(--indigo); }
+  .icon-btn[aria-pressed="true"] { background: var(--indigo); border-color: var(--indigo); color: var(--stone-50); }
+  .icon-btn:disabled { cursor: default; color: var(--stone-500); border-color: var(--stone-200); }
+  .icon-btn svg { width: 15px; height: 15px; }
 
-  .composer { border-top: 1px solid var(--hairline); background: var(--mist); padding: 14px 16px 18px; }
-  .composer form { max-width: 680px; margin: 0 auto; display: flex; gap: 8px; }
+  .typing { align-self: flex-start; display: flex; align-items: center; gap: 10px; color: var(--stone-500); font-size: 14px; }
+  .typing .spark { width: 16px; height: 16px; color: var(--indigo); animation: spin 1.2s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error {
+    align-self: flex-start; display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border: 1px solid var(--red); color: var(--red); font-size: 14px; background: var(--stone-50);
+  }
+
+  /* Composer */
+  .composer { background: var(--stone-100); padding: 16px 16px 24px; border-top: 1px solid var(--stone-200); }
+  .composer form { max-width: var(--measure); margin: 0 auto; display: flex; }
   .composer input {
-    flex: 1; min-width: 0; border: 1px solid var(--hairline); background: var(--slip);
-    border-radius: 12px; padding: 12px 14px;
+    flex: 1; min-width: 0; height: 48px; padding: 0 16px;
+    border: 1px solid var(--stone-300); border-right: 0; background: var(--stone-50); border-radius: 0;
   }
-  .composer input:focus-visible { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-tint); }
+  .composer input::placeholder { color: var(--stone-400); }
+  .composer input:focus-visible { outline: none; border-color: var(--indigo); }
   .composer button {
-    border: 0; background: var(--teal); color: #fff; font-weight: 600;
-    border-radius: 12px; padding: 0 18px; cursor: pointer;
+    height: 48px; padding: 0 24px; border: 0; border-radius: 0;
+    background: var(--indigo); color: var(--stone-50); font-weight: 500; cursor: pointer;
+    transition: background-color .15s ease;
   }
+  .composer button:hover:not(:disabled) { background: var(--indigo-hover); }
   .composer button:disabled { opacity: .5; cursor: default; }
+  .composer .fine { max-width: var(--measure); margin: 10px auto 0; font-size: 12px; color: var(--stone-500); text-align: center; }
 
-  @media (max-width: 520px) {
-    .bar-inner { padding: 14px 16px; }
-    .bar .status { display: none; }
-    .empty h1 { font-size: 25px; }
+  @media (max-width: 720px) {
+    .nav { display: none; }
+    .empty { padding-top: 16px; }
+    .empty h1 { font-size: 38px; }
+    .suggestions { grid-template-columns: 1fr; margin-top: 32px; }
+    .suggestions button { min-height: 0; }
     .ask { max-width: 90%; }
   }
-  @media (prefers-reduced-motion: reduce) { .slip { animation: none; } }
+  @media (max-width: 420px) {
+    .status { display: none; }
+    .slip .who, .slip .answer { padding-left: 18px; padding-right: 18px; }
+    .ledger, .slip .handoff { margin-left: 18px; margin-right: 18px; }
+    .slip footer { padding-left: 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .slip, .eyebrow .spark, .typing .spark { animation: none; }
+  }
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="spark" viewBox="0 0 24 24"><path d="M0 12C8.36 12 12 8.48 12 0c0 8.48 3.62 12 12 12-8.38 0-12 3.62-12 12 0-8.38-3.64-12-12-12Z"/></symbol>
+</svg>
+
 <header class="bar">
   <div class="bar-inner">
-    <div class="wordmark">adopt<span>.</span></div>
-    <div class="section">Help</div>
+    <a class="brand" href="/" aria-label="Adopt Help home">
+      <svg class="spark" aria-hidden="true"><use href="#spark"/></svg><b>Adopt</b>
+    </a>
+    <nav class="nav" aria-label="Help Centre">
+      <span aria-current="page">Help Centre</span>
+    </nav>
     <div class="status" id="status"></div>
   </div>
 </header>
@@ -124,8 +213,9 @@
 <main id="scroller">
   <div class="thread" id="thread" aria-live="polite">
     <section class="empty" id="empty">
-      <h1>Ask Ada about your money.</h1>
-      <p>Payments, cards, refunds, KYC and savings. Ada answers from the Adopt Help Centre and brings in a specialist when you need one.</p>
+      <div class="eyebrow"><svg class="spark" aria-hidden="true"><use href="#spark"/></svg>AI Native Support</div>
+      <h1>Ask Ada about your money. <span class="muted">Answers you can check.</span></h1>
+      <p>Payments, cards, refunds, KYC and savings. Ada answers from the Adopt Help Centre, cites every source, and brings in a specialist when you need one.</p>
       <div class="suggestions" id="suggestions"></div>
     </section>
   </div>
@@ -133,19 +223,21 @@
 
 <div class="composer">
   <form id="form">
-    <label for="q" class="visually-hidden" style="position:absolute;left:-9999px">Your question</label>
+    <label for="q" class="sr-only">Your question</label>
     <input id="q" autocomplete="off" placeholder="Ask about payments, cards, refunds…" maxlength="2000">
-    <button id="send" type="submit">Ask</button>
+    <button id="send" type="submit">Ask Ada</button>
   </form>
+  <div class="fine">Ada answers from the Adopt Help Centre. A specialist reviews anything it cannot.</div>
 </div>
 
 <script>
 const SUGGESTIONS = [
-  "What is the daily UPI limit?",
-  "There is a charge on my card I did not make.",
-  "How do I get my annual fee waived?",
-  "Should I put my savings into index funds?",
+  ["Payments", "What is the daily UPI limit?"],
+  ["Cards", "There is a charge on my card I did not make."],
+  ["Fees", "How do I get my annual fee waived?"],
+  ["Savings", "Should I put my savings into index funds?"],
 ];
+const SPARK = '<svg class="spark" aria-hidden="true"><use href="#spark"/></svg>';
 const ICONS = {
   up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v11H4V10h3zm0 0 4-8a3 3 0 0 1 3 3v4h5.5a2 2 0 0 1 2 2.3l-1.4 8A2 2 0 0 1 18.1 21H7"/></svg>',
   down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V3h3v11h-3zm0 0-4 8a3 3 0 0 1-3-3v-4H4.5a2 2 0 0 1-2-2.3l1.4-8A2 2 0 0 1 5.9 3H17"/></svg>',
@@ -172,19 +264,26 @@ async function feedback(traceId, kind) {
 
 function renderSlip({ reply, meta }) {
   const slip = el("article", { class: "slip" });
+  const who = el("div", { class: "who" });
+  who.innerHTML = SPARK;
+  who.append("Ada, Adopt Help");
+  slip.append(who);
   if (reply.escalate) slip.append(el("div", { class: "handoff" }, "Passed to a specialist. They will contact you shortly."));
   slip.append(el("div", { class: "answer" }, reply.answer));
   if (reply.citations.length) {
-    const ledger = el("ul", { class: "ledger", "aria-label": "Sources" });
+    const ledger = el("div", { class: "ledger" });
+    ledger.append(el("div", { class: "ledger-title" }, "Sources"));
+    const list = el("ul", { "aria-label": "Sources" });
     reply.citations.forEach((id) => {
       const li = el("li");
       li.append(el("span", { class: "id" }, id), el("span", {}, kbTitles[id] || "Help Centre entry"));
-      ledger.append(li);
+      list.append(li);
     });
+    ledger.append(list);
     slip.append(ledger);
   }
   const footer = el("footer");
-  footer.append(el("span", { class: "meta" }, `prompt v${meta.prompt_version} · ${meta.model} · ${meta.latency_ms} ms`));
+  footer.append(el("span", { class: "meta" }, `Prompt v${meta.prompt_version} · ${meta.model} · ${meta.latency_ms} ms`));
   const rate = (kind, label, icon) => {
     const b = el("button", { class: "icon-btn", type: "button", "aria-label": label, "aria-pressed": "false" });
     b.innerHTML = icon;
@@ -212,7 +311,9 @@ function renderSlip({ reply, meta }) {
 async function ask(question) {
   $("empty")?.remove();
   thread.append(el("div", { class: "ask" }, question));
-  const typing = el("div", { class: "typing" }, "Ada is checking the Help Centre…");
+  const typing = el("div", { class: "typing" });
+  typing.innerHTML = SPARK;
+  typing.append("Ada is checking the Help Centre…");
   thread.append(typing); scrollDown();
   send.disabled = true;
   try {
@@ -238,13 +339,14 @@ form.addEventListener("submit", (e) => {
   input.value = "";
   ask(q);
 });
-SUGGESTIONS.forEach((s) => {
-  const b = el("button", { type: "button" }, s);
-  b.onclick = () => ask(s);
+SUGGESTIONS.forEach(([tag, q]) => {
+  const b = el("button", { type: "button" });
+  b.append(el("span", { class: "tag" }, tag), el("span", { class: "q" }, q));
+  b.onclick = () => ask(q);
   $("suggestions").append(b);
 });
 fetch("/kb").then((r) => r.json()).then((rows) => rows.forEach((r) => (kbTitles[r.id] = r.title)));
-fetch("/healthz").then((r) => r.json()).then((h) => ($("status").textContent = `route: ${h.model}`)).catch(() => {});
+fetch("/healthz").then((r) => r.json()).then((h) => ($("status").textContent = `Route: ${h.model}`)).catch(() => {});
 input.focus();
 </script>
 </body>

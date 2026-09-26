@@ -76,10 +76,10 @@ def score(raw: str, item: GoldenItem | None) -> Scores:
     format_valid = _is_valid(parsed)
     escalated = bool(parsed) and parsed.get("escalate") is True
     refusal = bool(REFUSAL_RE.search(answer))
-    base = dict(
-        format_valid=format_valid, escalated=escalated,
-        citation_present=bool(citations), refusal=refusal,
-    )
+    base = {
+        "format_valid": format_valid, "escalated": escalated,
+        "citation_present": bool(citations), "refusal": refusal,
+    }
     if item is None:
         return Scores(**base)
 
