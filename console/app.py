@@ -2,9 +2,8 @@
 
     uv run uvicorn console.app:app --port 8100
 
-Reads the incident store, Supabase telemetry and TrueForge sessions. Its only write is answering an
-approval the agent already asked for, and it refuses unless the incident is checkpointed and the pending
-call is exactly the frozen proposal.
+Reads the incident store, Supabase telemetry and TrueForge sessions. Its only write is answering an approval
+the agent already asked for (here or from Slack, see console/decisions.py).
 """
 
 import json
@@ -16,7 +15,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from console import trueforge
+from console import decisions, trueforge
 from target import config_repo
 from regress_mcp import narrative
 from regress_mcp.detector import detect
@@ -24,7 +23,6 @@ from regress_mcp.store import Store
 from target import config
 
 STATIC = Path(__file__).parent / "static"
-GATED_TOOLS = {"rollback_execute", "route_revert"}
 SERIES_SQL = """
 select date_trunc('minute', ts) as minute,
   count(*) as requests,
@@ -170,32 +168,11 @@ class Decision(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
-def _proposal_args(proposal: dict) -> tuple[str, dict]:
-    keys = {"rollback_execute": ("prompt", "label", "from_version", "to_version"),
-            "route_revert": ("route", "from_model", "to_model")}[proposal["action"]]
-    return proposal["action"], {k: proposal[k] for k in keys}
-
-
 @app.post("/api/incidents/{incident_id}/decision")
 def decide(incident_id: str, body: Decision) -> dict:
     try:
-        inc = store().incident(incident_id)
+        return decisions.apply_decision(store(), tf_client, incident_id, body.decision, body.reason, actor="console")
     except KeyError:
         raise HTTPException(404, f"unknown incident {incident_id}")
-    if inc["status"] != "checkpointed" or not inc["proposal"]:
-        raise HTTPException(409, f"{incident_id} is {inc['status']}; only a checkpointed incident awaits a decision")
-    with tf_client() as h:
-        sid = trueforge.session_for(incident_id, h)
-        if sid is None:
-            raise HTTPException(409, "no TrueForge session is linked to this incident")
-        view = trueforge.session_view(h, sid)
-        gated = [p for p in view["pending"] if p["tool"] in GATED_TOOLS]
-        if len(gated) != 1:
-            raise HTTPException(409, f"expected exactly one pending gated call, found {len(gated)}")
-        pending = gated[0]
-        tool, expected = _proposal_args(inc["proposal"])
-        actual = {k: pending["arguments"].get(k) for k in expected}
-        if pending["tool"] != tool or actual != expected or pending["arguments"].get("incident_id") != incident_id:
-            raise HTTPException(409, f"the pending call does not match the frozen proposal: {pending['tool']} {actual}")
-        turn_id = trueforge.answer(h, sid, pending, body.decision, body.reason)
-    return {"ok": True, "decision": body.decision, "turn_id": turn_id, "session_url": view["url"]}
+    except decisions.DecisionRefused as exc:
+        raise HTTPException(409, str(exc))

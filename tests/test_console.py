@@ -19,8 +19,8 @@ def pending_call(args: dict, tool: str = "rollback_execute") -> dict:
 
 
 class FakeTrueForge:
-    def __init__(self, call: dict | None):
-        self.call, self.posted = call, []
+    def __init__(self, call: dict | None, fail_post: bool = False):
+        self.call, self.posted, self.fail_post = call, [], fail_post
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -31,6 +31,8 @@ class FakeTrueForge:
         if path.endswith("/events"):
             return httpx.Response(200, json={"data": [{"type": "model.message", "tool_calls": [self.call]}] if self.call else []})
         if path.endswith("/turns") and request.method == "POST":
+            if self.fail_post:
+                return httpx.Response(500, json={"error": "boom"})
             self.posted.append(json.loads(request.content))
             return httpx.Response(200, json={"data": {"id": "turn_2"}})
         return httpx.Response(404, json={})
@@ -100,3 +102,49 @@ def test_rejects_unknown_decisions(env):
     store, inc, use = env
     resp = use(FakeTrueForge(None)).post(f"/api/incidents/{inc}/decision", json={"decision": "approve-everything"})
     assert resp.status_code == 422
+
+
+def test_console_decision_updates_the_slack_message(env, slack_api):
+    store, inc, use = env
+    store.save_notification(inc, "C1", "100.1", summary="summary")
+    resp = use(FakeTrueForge(pending_call(good_args(inc)))).post(f"/api/incidents/{inc}/decision", json={"decision": "allow"})
+    assert resp.status_code == 200, resp.text
+    [upd] = slack_api.of("chat.update")
+    assert upd["ts"] == "100.1" and "Approved* by console" in str(upd["blocks"])
+    assert not [b for b in upd["blocks"] if b["type"] == "actions"]
+
+
+def test_second_decision_names_who_decided(env):
+    store, inc, use = env
+    store.claim_decision(inc, "@ana")
+    fake = FakeTrueForge(pending_call(good_args(inc)))
+    resp = use(fake).post(f"/api/incidents/{inc}/decision", json={"decision": "deny", "reason": "late"})
+    assert resp.status_code == 409 and "already decided by @ana" in resp.text and fake.posted == []
+
+
+def test_failed_answer_releases_the_decision(env):
+    store, inc, use = env
+    with pytest.raises(httpx.HTTPStatusError):
+        use(FakeTrueForge(pending_call(good_args(inc)), fail_post=True)).post(
+            f"/api/incidents/{inc}/decision", json={"decision": "allow"})
+    assert store.notification(inc)["decided_by"] is None
+
+
+def test_slack_denial_reason_names_the_decider(env):
+    from console import decisions
+    store, inc, use = env
+    fake = FakeTrueForge(pending_call(good_args(inc)))
+    console_app.state["tf_transport"] = httpx.MockTransport(fake)
+    decisions.apply_decision(store, console_app.tf_client, inc, "deny", "not at peak", actor="@ana")
+    assert fake.posted[0]["input"][0]["approval"] == {"status": "deny", "reason": "not at peak (rejected by @ana in Slack)"}
+    assert store.notification(inc)["decided_by"] == "@ana"
+
+
+def test_not_paused_yet_is_retryable(env):
+    from console import decisions
+    store, inc, use = env
+    console_app.state["tf_transport"] = httpx.MockTransport(FakeTrueForge(None))
+    with pytest.raises(decisions.DecisionRefused) as exc:
+        decisions.apply_decision(store, console_app.tf_client, inc, "allow", None, actor="@ana")
+    assert exc.value.retryable is True
+    assert (store.notification(inc) or {}).get("decided_by") is None
