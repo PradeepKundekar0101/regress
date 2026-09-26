@@ -27,7 +27,7 @@ Do not trip faults in the last 2 hours except full rehearsals that open incident
 uv run python -m agent.preflight
 ```
 
-All nine lines must say PASS: bot answers, production on baseline, detector warm and quiet, no open incident, TrueForge has the model and agent, TrueForge reaches regress-mcp, sandbox ready, console up, traffic flowing.
+All ten lines must say PASS: bot answers, production on baseline, detector warm and quiet, no open incident, TrueForge has the model and agent, TrueForge reaches regress-mcp, TrueForge reaches PostHog MCP read-only, sandbox ready, console up, traffic flowing.
 Also check by hand: OpenAI credits, and the Daytona dashboard has no pile of old sandboxes.
 
 ## 3. Open these windows, left to right
@@ -64,7 +64,8 @@ See (tab 6): `ALARM [citation_correct, escalation_correct, eval_score, format_va
 See (console): tiles turn orange with z-scores; the new incident appears at the top.
 Do: open the session link in TrueForge.
 See: the runbook loads, four subagents start in parallel (what-changed, segments, impact, replay), a Daytona sandbox runs the replay harness.
-Say: "Detection is arithmetic, not an LLM opinion: robust z-scores in SQL against a clean baseline. The agent then fans out four subagents and writes and runs replay code in a sandbox."
+Say: "Detection is arithmetic, not an LLM opinion: robust z-scores in SQL against a clean baseline. The agent then fans out four subagents and writes and runs replay code in a sandbox. It reaches four real systems over MCP: our regress server over Supabase telemetry, PostHog's own MCP for customer impact, Langfuse for prompts and traces, and GitHub for the change history and the report."
+Point at (TrueForge session, impact subagent): its `posthog` `execute-sql` call counting thumbs-down and talk-to-human events, and its cross-check that PostHog agrees with Regress's numbers.
 
 ### 2:30 The evidence and the question (alarm to approval card: about 2-3 minutes)
 
@@ -124,7 +125,7 @@ Wait until preflight is all PASS again before the next run.
 
 ## 7. Rubric, in one line each
 
-- **Harness does the work (30):** four TrueForge subagents, agent-written replay code in the Daytona sandbox, native approval gate, session resumed after a kill.
+- **Harness does the work (30):** four real systems over MCP (regress, PostHog, Langfuse, GitHub), four TrueForge subagents, agent-written replay code in the Daytona sandbox, native approval gate, session resumed after a kill.
 - **It actually runs (25):** preflight all PASS on a clean machine; everything above is real traffic, real Langfuse, real commits.
 - **Where it stops (20):** one gated write per incident, frozen proposal, three guards in the console, Deny path.
 - **Job worth handing over (15):** "our support bot got worse after someone changed something; find it, prove it, put it back, ask me first."

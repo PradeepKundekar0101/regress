@@ -47,14 +47,17 @@ Say which change segment explains which alarm, and which customer categories deg
 
 ## impact
 
-Tools: `regress.get_window_stats` (group_by `model` and `prompt_version`), `regress.get_user_signals`.
+Tools: `regress.get_window_stats` (group_by `model` and `prompt_version`), `regress.get_user_signals`, and the read-only `posthog` connector (`execute-sql` runs HogQL over the `events` table).
 Quantify latency, cost and customer impact, and list what did not move (the ruled-out list).
+Cross-check the customer impact at the source: run your own HogQL in PostHog for `thumbs_down` and `talk_to_human` in the incident window (event property `trace_id` links each event to a bot trace) and report whether PostHog agrees with `regress.get_user_signals`.
+Figures you report still cite the regress evidence ids; PostHog is the independent check and the drill-down (which questions and sessions complained).
 
 ```json
 "findings": {
   "moved": [{"signal": "", "evidence": "ev_..."}],
   "unchanged": [{"signal": "", "evidence": "ev_..."}],
-  "user_signals": {"thumbs_down_current": "ev_...", "talk_to_human_current": "ev_...", "available": true}
+  "user_signals": {"thumbs_down_current": "ev_...", "talk_to_human_current": "ev_...", "available": true},
+  "posthog_cross_check": {"agrees": true, "hogql": "the query you ran", "note": "counts match / differ because ..."}
 }
 ```
 

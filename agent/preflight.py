@@ -78,6 +78,15 @@ def _connector():
     return {"rollback_execute", "route_revert", "run_detector"} <= set(names), f"{len(names)} tools"
 
 
+@check("TrueForge reaches PostHog MCP (read-only)")
+def _posthog():
+    d = httpx.get(f"{TRUEFORGE}/mcp-servers/posthog/tools", timeout=30).json()["data"]
+    tools = d["tools"] if isinstance(d, dict) else d
+    names = {t["name"] for t in tools}
+    writable = [t["name"] for t in tools if not (t.get("annotations") or {}).get("readOnlyHint")]
+    return "execute-sql" in names and not writable, f"{sorted(names)}; non-read-only: {writable or 'none'}"
+
+
 @check("sandbox provider ready")
 def _sandbox():
     m = httpx.get(f"{TRUEFORGE}/settings/sandbox-providers", timeout=10).json()["data"]

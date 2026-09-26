@@ -1,0 +1,375 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Regress - LLM regression detection and rollback",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "production",
+        "label": "Production target",
+        "focus": [
+          "traffic",
+          "bot",
+          "llm",
+          "supabase",
+          "langfuse",
+          "posthog"
+        ],
+        "note": "Simulated customers hit the support bot; every reply is scored and recorded."
+      },
+      {
+        "id": "investigate",
+        "label": "Investigation loop",
+        "focus": [
+          "watcher",
+          "mcp",
+          "trueforge",
+          "state",
+          "supabase",
+          "langfuse",
+          "posthog",
+          "github"
+        ],
+        "note": "Watcher opens an incident; the agent drives regress-mcp tools over real telemetry."
+      },
+      {
+        "id": "gated-write",
+        "label": "Gated rollback",
+        "focus": [
+          "console",
+          "trueforge",
+          "mcp",
+          "langfuse",
+          "github",
+          "state"
+        ],
+        "note": "A human approves the frozen proposal before the prompt label or route flips."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "traffic",
+      "type": "external",
+      "label": "Traffic simulator",
+      "sublabel": "golden-set customers",
+      "pos": [
+        30,
+        200
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "bot",
+      "type": "backend",
+      "label": "Support bot",
+      "sublabel": "FastAPI :8000",
+      "pos": [
+        270,
+        200
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "scores every reply"
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM gateway",
+      "sublabel": "OpenAI / TrueFoundry",
+      "pos": [
+        270,
+        40
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "posthog",
+      "type": "cloud",
+      "label": "PostHog",
+      "sublabel": "user signals",
+      "pos": [
+        590,
+        40
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "supabase",
+      "type": "database",
+      "label": "Supabase Postgres",
+      "sublabel": "requests table",
+      "pos": [
+        590,
+        154
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "langfuse",
+      "type": "cloud",
+      "label": "Langfuse",
+      "sublabel": "prompts + traces",
+      "pos": [
+        590,
+        268
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "github",
+      "type": "external",
+      "label": "Config repo",
+      "sublabel": "GitHub commits",
+      "pos": [
+        590,
+        382
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "state",
+      "type": "database",
+      "label": "Incident store",
+      "sublabel": "SQLite state machine",
+      "pos": [
+        900,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "backend",
+      "label": "regress-mcp",
+      "sublabel": "FastMCP :8941",
+      "pos": [
+        900,
+        211
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "detector + gates"
+    },
+    {
+      "id": "trueforge",
+      "type": "security",
+      "label": "TrueForge agent",
+      "sublabel": "Daytona sandbox",
+      "pos": [
+        1160,
+        211
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "approval gate"
+    },
+    {
+      "id": "console",
+      "type": "frontend",
+      "label": "Incident console",
+      "sublabel": "operator :8100",
+      "pos": [
+        1160,
+        400
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "watcher",
+      "type": "backend",
+      "label": "Watcher",
+      "sublabel": "polls detector",
+      "pos": [
+        1030,
+        40
+      ],
+      "size": [
+        150,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Production target (Docker)",
+      "wraps": [
+        "traffic",
+        "bot"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Regress",
+      "wraps": [
+        "state",
+        "mcp",
+        "trueforge",
+        "console",
+        "watcher"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "ask",
+      "from": "traffic",
+      "to": "bot",
+      "label": "POST /reply",
+      "variant": "emphasis"
+    },
+    {
+      "id": "complete",
+      "from": "bot",
+      "to": "llm",
+      "label": "completion"
+    },
+    {
+      "id": "bot-events",
+      "from": "bot",
+      "to": "posthog",
+      "label": "feedback",
+      "variant": "dashed"
+    },
+    {
+      "id": "bot-row",
+      "from": "bot",
+      "to": "supabase",
+      "label": "scored row",
+      "labelSegment": 2
+    },
+    {
+      "id": "bot-trace",
+      "from": "bot",
+      "to": "langfuse",
+      "label": "prompt + trace"
+    },
+    {
+      "id": "window-sql",
+      "from": "mcp",
+      "to": "supabase",
+      "label": "window SQL"
+    },
+    {
+      "id": "flip-label",
+      "from": "mcp",
+      "to": "langfuse",
+      "label": "label flip",
+      "variant": "security",
+      "labelSegment": 2
+    },
+    {
+      "id": "commit",
+      "from": "mcp",
+      "to": "github",
+      "label": "config commit",
+      "variant": "security"
+    },
+    {
+      "id": "transitions",
+      "from": "mcp",
+      "to": "state",
+      "label": "transitions",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "detect",
+      "from": "watcher",
+      "to": "mcp",
+      "label": "run_detector",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "start",
+      "from": "watcher",
+      "to": "trueforge",
+      "label": "start session",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "tools",
+      "from": "trueforge",
+      "to": "mcp",
+      "label": "MCP tools",
+      "variant": "emphasis"
+    },
+    {
+      "id": "approve",
+      "from": "console",
+      "to": "trueforge",
+      "label": "approve",
+      "variant": "security"
+    },
+    {
+      "id": "console-reads",
+      "from": "console",
+      "to": "state",
+      "label": "reads"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Production target",
+      "items": [
+        "Bot answers from the FAQ with the Langfuse production prompt",
+        "Every reply scored against golden checks",
+        "Rows land in Supabase, traces in Langfuse"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Investigation",
+      "items": [
+        "Robust-z detector over 5-minute windows",
+        "Replay re-runs real inputs under two arms",
+        "Four gates must pass before checkpoint"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Gated write",
+      "items": [
+        "Rollback only from a frozen, checkpointed proposal",
+        "Human approves in the console or TrueForge",
+        "Every flip is also a config-repo commit"
+      ]
+    }
+  ]
+}

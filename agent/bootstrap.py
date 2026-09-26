@@ -29,6 +29,9 @@ LANGFUSE_READ_TOOLS = ["getPrompt", "listPrompts", "listObservations", "getObser
 GATED_TOOLS = ["rollback_execute", "route_revert"]
 # GitHub: read the config history and post the incident report as an issue. Nothing that pushes,
 # deletes, merges or creates repositories is exposed.
+# PostHog: registered with ?readonly=true&mode=tools&tools=... and pinned to one project, then limited
+# again here. These are queries only; nothing that edits flags, experiments or data is exposed.
+POSTHOG_TOOLS = ["execute-sql", "query-trends", "query-trends-actors", "persons-retrieve"]
 GITHUB_TOOLS = ["list_commits", "get_commit", "get_file_contents", "list_issues", "issue_read",
                 "issue_write", "add_issue_comment"]
 
@@ -78,6 +81,23 @@ def register_regress_connector(h: httpx.Client) -> None:
     print(f"connector regress: {len(names)} tools")
 
 
+def register_posthog_connector(h: httpx.Client) -> None:
+    """PostHog's official MCP server, read-only, individual tools, pinned to this project."""
+    key, project = config.optional_env("POSTHOG_PERSONAL_API_KEY"), config.optional_env("POSTHOG_PROJECT_ID")
+    if not key or not project:
+        print("connector posthog: skipped (POSTHOG_PERSONAL_API_KEY / POSTHOG_PROJECT_ID not set)")
+        return
+    url = f"https://mcp.posthog.com/mcp?readonly=true&mode=tools&tools={','.join(POSTHOG_TOOLS)}"
+    _check(h.put(f"{TRUEFORGE}/settings/mcp-servers", json={"manifest": {
+        "type": "remote", "name": "posthog", "url": url,
+        "description": "PostHog (read-only): customer feedback events - thumbs down, talk to a human - for impact and cross-checks",
+        "auth": {"type": "header", "headers": {"Authorization": f"Bearer {key}", "x-posthog-project-id": project}},
+    }}))
+    tools = _check(h.get(f"{TRUEFORGE}/mcp-servers/posthog/tools"))
+    names = {t["name"] for t in (tools["data"]["tools"] if isinstance(tools["data"], dict) else tools["data"])}
+    print(f"connector posthog: {sorted(names & set(POSTHOG_TOOLS))} (read-only)")
+
+
 def register_skill(h: httpx.Client, sha: str) -> None:
     _check(h.put(f"{TRUEFORGE}/settings/skills", json={"manifest": {
         "type": "git", "name": "regress-runbook", "url": f"https://github.com/{SKILL_REPO}",
@@ -93,6 +113,8 @@ def manifest(available: set[str]) -> dict:
                 "preload_tools": ["run_detector", "get_incident", "check_gates", "validate_narrative"]}]
     if "langfuse" in available:
         servers.append({"name": "langfuse", "enable_tools": LANGFUSE_READ_TOOLS, "require_approval_for_tools": ["@write"]})
+    if "posthog" in available:
+        servers.append({"name": "posthog", "enable_tools": POSTHOG_TOOLS, "require_approval_for_tools": ["@write"]})
     if "github" in available:
         servers.append({"name": "github", "enable_tools": GITHUB_TOOLS, "require_approval_for_tools": ["@destructive"]})
     return {
@@ -139,6 +161,7 @@ def main() -> None:
         if MODEL not in models:
             raise SystemExit(f"model {MODEL} not configured in TrueForge; available: {models}")
         register_regress_connector(h)
+        register_posthog_connector(h)
         register_skill(h, sha)
         available = connectors(h)
         spec = manifest(available)
